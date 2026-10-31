@@ -1,0 +1,40 @@
+{
+  "name": "temple-live-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Temple Live Studio — Hệ thống Chánh Điện Việt Nam 2.5D Tương tác TikTok LIVE độc lập, ổn định và giàu tính năng",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "dev": "node --experimental-strip-types src/server/index.ts",
+    "start": "node --experimental-strip-types src/server/index.ts",
+    "build": "vite build && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sim:burst": "node --experimental-strip-types src/server/cli/burstBenchmark.ts",
+    "qa:visual": "node --experimental-strip-types src/server/cli/visualQaRunner.ts"
+  },
+  "dependencies": {
+    "@fontsource/be-vietnam-pro": "^5.2.0",
+    "@fontsource/noto-serif": "^5.2.0",
+    "msedge-tts": "^2.0.4",
+    "pixi.js": "^8.9.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.2"
+  },
+  "optionalDependencies": {
+    "tiktok-live-connector": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/ws": "^8.5.14",
+    "playwright-core": "^1.51.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.8"
+  }
+}

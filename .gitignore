@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/*.sqlite*
+data/backups/
+data/tts-cache/
+_refs/
+*.log
+.env
+.DS_Store
+Thumbs.db
