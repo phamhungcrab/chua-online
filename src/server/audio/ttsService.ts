@@ -1,0 +1,259 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import type { TtsBroadcastPayload } from '../../shared/types.ts';
+
+export interface QueuedTtsItem {
+  id: string;
+  userId: string;
+  text: string;
+  voice: 'vi-VN-NamMinhNeural' | 'vi-VN-HoaiMyNeural';
+  ratePercent: number;
+  pitchHz: number;
+  priority: number;
+  ttlMs: number;
+  enqueuedAt: number;
+  ritualId?: string;
+}
+
+/**
+ * Priority + TTL TTS Queue with per-user pending comment replacement,
+ * SHA-256 disk audio cache, and non-blocking synthesis.
+ */
+export class PriorityTtsService {
+  private readonly cacheDir: string;
+  private readonly maxQueueSize: number;
+  private readonly maxCacheFiles: number;
+  private readonly queue: QueuedTtsItem[] = [];
+  private readonly onReadyToBroadcast: (payload: TtsBroadcastPayload) => void;
+  private processing = false;
+  private seq = 0;
+  private droppedTotal = 0;
+  private processedTotal = 0;
+  private cacheHitsTotal = 0;
+  private synthesizeEnabled = true;
+
+  constructor(options: {
+    cacheDir: string;
+    maxQueueSize?: number;
+    maxCacheFiles?: number;
+    synthesizeEnabled?: boolean;
+    onReadyToBroadcast: (payload: TtsBroadcastPayload) => void;
+  }) {
+    this.cacheDir = options.cacheDir;
+    this.maxQueueSize = options.maxQueueSize ?? 20;
+    this.maxCacheFiles = options.maxCacheFiles ?? 80;
+    this.synthesizeEnabled = options.synthesizeEnabled ?? true;
+    this.onReadyToBroadcast = options.onReadyToBroadcast;
+    fs.mkdirSync(this.cacheDir, { recursive: true });
+  }
+
+  public enqueue(item: Omit<QueuedTtsItem, 'id' | 'enqueuedAt'>): boolean {
+    const cleanText = String(item.text || '').trim().slice(0, 360);
+    if (!cleanText) return false;
+
+    const now = Date.now();
+    this.evictExpired(now);
+
+    // If same user already has a lower/equal-priority non-gift item waiting, replace it in place
+    if (item.priority < 90 && item.userId) {
+      const existingIdx = this.queue.findIndex(
+        (q) => q.userId === item.userId && q.priority < 90
+      );
+      if (existingIdx >= 0) {
+        this.queue.splice(existingIdx, 1);
+      }
+    }
+
+    if (this.queue.length >= this.maxQueueSize) {
+      // Find lowest priority item
+      let lowestIdx = 0;
+      for (let i = 1; i < this.queue.length; i++) {
+        if (this.queue[i].priority < this.queue[lowestIdx].priority) {
+          lowestIdx = i;
+        }
+      }
+      if (this.queue[lowestIdx].priority >= item.priority) {
+        this.droppedTotal++;
+        return false;
+      }
+      this.queue.splice(lowestIdx, 1);
+      this.droppedTotal++;
+    }
+
+    this.queue.push({
+      ...item,
+      text: cleanText,
+      id: `tts_${now}_${++this.seq}`,
+      enqueuedAt: now
+    });
+
+    this.pump();
+    return true;
+  }
+
+  public evictExpired(now = Date.now()): number {
+    let removed = 0;
+    for (let i = this.queue.length - 1; i >= 0; i--) {
+      const q = this.queue[i];
+      if (q.ttlMs > 0 && now - q.enqueuedAt > q.ttlMs) {
+        this.queue.splice(i, 1);
+        this.droppedTotal++;
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  public pickNextIndex(): number {
+    if (this.queue.length === 0) return -1;
+    let best = 0;
+    for (let i = 1; i < this.queue.length; i++) {
+      const a = this.queue[i];
+      const b = this.queue[best];
+      if (a.priority > b.priority || (a.priority === b.priority && a.enqueuedAt < b.enqueuedAt)) {
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  private pump(): void {
+    if (this.processing || this.queue.length === 0) return;
+    this.processing = true;
+
+    setImmediate(async () => {
+      try {
+        while (this.queue.length > 0) {
+          this.evictExpired(Date.now());
+          const idx = this.pickNextIndex();
+          if (idx < 0) break;
+          const next = this.queue.splice(idx, 1)[0];
+          const audioUrl = await this.synthesizeOrGetCached(next);
+          this.processedTotal++;
+          this.onReadyToBroadcast({
+            id: next.id,
+            text: next.text,
+            audioUrl,
+            voice: next.voice,
+            priority: next.priority,
+            ritualId: next.ritualId
+          });
+        }
+      } finally {
+        this.processing = false;
+      }
+    });
+  }
+
+  private async synthesizeOrGetCached(item: QueuedTtsItem): Promise<string | null> {
+    if (!this.synthesizeEnabled) {
+      return null;
+    }
+
+    const hash = crypto
+      .createHash('sha256')
+      .update(`${item.voice}|${item.ratePercent}|${item.pitchHz}|${item.text}`)
+      .digest('hex')
+      .slice(0, 24);
+    const fileName = `tts_${hash}.mp3`;
+    const filePath = path.join(this.cacheDir, fileName);
+
+    if (fs.existsSync(filePath)) {
+      this.cacheHitsTotal++;
+      return `/tts-cache/${fileName}`;
+    }
+
+    try {
+      const { MsEdgeTTS, OUTPUT_FORMAT } = await import('msedge-tts');
+      const tts = new MsEdgeTTS();
+      await tts.setMetadata(item.voice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+      const xmlSafeText = item.text.replace(/[<>&"']/g, (c) => {
+        switch (c) {
+          case '<':
+            return '&lt;';
+          case '>':
+            return '&gt;';
+          case '&':
+            return '&amp;';
+          case '"':
+            return '&quot;';
+          default:
+            return '&apos;';
+        }
+      });
+
+      const pitchStr = `${item.pitchHz >= 0 ? '+' : ''}${item.pitchHz}Hz`;
+      const rateStr = `${item.ratePercent >= 0 ? '+' : ''}${item.ratePercent}%`;
+      const { audioStream } = tts.toStream(xmlSafeText, {
+        pitch: pitchStr,
+        rate: rateStr
+      });
+
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Edge TTS timeout')), 7000);
+        audioStream.on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        audioStream.on('close', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+        audioStream.on('error', (err: Error) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+      });
+
+      try {
+        tts.close();
+      } catch {
+        // ignore
+      }
+
+      if (chunks.length > 0) {
+        fs.writeFileSync(filePath, Buffer.concat(chunks));
+        this.pruneCacheFiles();
+        return `/tts-cache/${fileName}`;
+      }
+    } catch {
+      // Offline or Edge TTS unavailable: client overlay automatically falls back to browser Web Speech / chime
+    }
+    return null;
+  }
+
+  private pruneCacheFiles(): void {
+    try {
+      const files = fs
+        .readdirSync(this.cacheDir)
+        .filter((f) => f.endsWith('.mp3'))
+        .map((f) => ({
+          name: f,
+          mtime: fs.statSync(path.join(this.cacheDir, f)).mtimeMs
+        }))
+        .sort((a, b) => a.mtime - b.mtime);
+
+      while (files.length > this.maxCacheFiles) {
+        const oldest = files.shift();
+        if (oldest) {
+          fs.unlinkSync(path.join(this.cacheDir, oldest.name));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  public getMetrics(): {
+    ttsQueueDepth: number;
+    ttsDroppedTotal: number;
+    ttsProcessedTotal: number;
+    ttsCacheHits: number;
+  } {
+    return {
+      ttsQueueDepth: this.queue.length,
+      ttsDroppedTotal: this.droppedTotal,
+      ttsProcessedTotal: this.processedTotal,
+      ttsCacheHits: this.cacheHitsTotal
+    };
+  }
+}

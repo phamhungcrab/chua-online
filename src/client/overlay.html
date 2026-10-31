@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chánh Điện Tịnh Tâm · Temple Live Studio (9:16 Overlay)</title>
+  <style>
+    :root {
+      --bg-deep: #0b0503;
+      --lacquer-dark: rgba(26, 10, 5, 0.84);
+      --lacquer-crimson: rgba(74, 20, 10, 0.90);
+      --gold-primary: #e5b85b;
+      --gold-bright: #ffe494;
+      --gold-border: rgba(229, 184, 91, 0.62);
+      --text-parchment: #f8ecd6;
+      --text-muted: #cdb088;
+      --jade-accent: #52d1b8;
+      --lotus-pink: #f48fb1;
+      --font-display: "Noto Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Be Vietnam Pro", "Segoe UI", system-ui, sans-serif;
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050201;
+      font-family: var(--font-body);
+      color: var(--text-parchment);
+      user-select: none;
+    }
+
+    body.transparent-mode,
+    body.transparent-mode #stage9x16 {
+      background: transparent !important;
+    }
+
+    #viewportFit {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    #stage9x16 {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      transform-origin: center center;
+      overflow: hidden;
+      background: var(--bg-deep);
+      box-shadow: 0 0 80px rgba(0, 0, 0, 0.9);
+    }
+
+    #templeCanvas {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      z-index: 1;
+    }
+
+    .hud-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    body.hud-none .hud-layer {
+      display: none !important;
+    }
+
+    /* 1. Top Hoành Phi Lacquer Plaque */
+    #topPlaque {
+      position: absolute;
+      top: 28px;
+      left: 84px;
+      right: 84px;
+      height: 118px;
+      border-radius: 22px;
+      border: 2.5px solid var(--gold-primary);
+      background: linear-gradient(180deg, rgba(84, 24, 12, 0.94) 0%, rgba(34, 11, 5, 0.94) 100%);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), inset 0 0 36px rgba(229, 184, 91, 0.22);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 44px;
+      text-align: center;
+    }
+
+    #plaqueTitle {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 42px;
+      letter-spacing: 0.08em;
+      color: var(--gold-bright);
+      text-transform: uppercase;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+      line-height: 1.15;
+    }
+
+    #plaqueSubtitle {
+      font-family: var(--font-display);
+      font-size: 21px;
+      letter-spacing: 0.09em;
+      color: var(--text-parchment);
+      margin-top: 4px;
+      opacity: 0.95;
+    }
+
+    /* 2. Status Pills Row */
+    #statusPills {
+      position: absolute;
+      top: 158px;
+      left: 36px;
+      right: 36px;
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      flex-wrap: nowrap;
+    }
+
+    .stat-pill {
+      background: var(--lacquer-dark);
+      border: 1.8px solid var(--gold-border);
+      border-radius: 999px;
+      padding: 8px 20px;
+      font-size: 21px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-variant-numeric: tabular-nums;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+    }
+
+    .stat-pill .label {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .live-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--jade-accent);
+      box-shadow: 0 0 10px var(--jade-accent);
+    }
+
+    /* 3. Left & Right Side Lacquer Cards (positioned neatly beside the altar pillars) */
+    .side-card {
+      position: absolute;
+      width: 286px;
+      background: var(--lacquer-dark);
+      border: 1.8px solid var(--gold-border);
+      border-radius: 18px;
+      padding: 14px 16px;
+      box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55);
+    }
+
+    .side-card h3 {
+      margin: 0 0 8px 0;
+      font-family: var(--font-display);
+      font-size: 21px;
+      font-weight: 700;
+      color: var(--gold-bright);
+      letter-spacing: 0.04em;
+      text-align: center;
+      border-bottom: 1px solid rgba(229, 184, 91, 0.28);
+      padding-bottom: 6px;
+    }
+
+    #leftGuideCard {
+      left: 20px;
+      top: 430px;
+    }
+
+    .guide-list {
+      display: grid;
+      gap: 7px;
+      font-size: 17px;
+      line-height: 1.35;
+    }
+
+    .guide-list b {
+      color: var(--gold-bright);
+    }
+
+    .goal-box {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(229, 184, 91, 0.28);
+    }
+
+    .goal-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 15px;
+      color: var(--gold-bright);
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+
+    .goal-bar-bg {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      overflow: hidden;
+      border: 1px solid rgba(229, 184, 91, 0.4);
+    }
+
+    .goal-bar-fill {
+      height: 100%;
+      width: 25%;
+      background: linear-gradient(90deg, #e5b85b, #ff94b8);
+      transition: width 0.35s ease;
+    }
+
+    /* Poll Box inside Left Card */
+    .poll-box {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(229, 184, 91, 0.28);
+      font-size: 15px;
+    }
+
+    .poll-title {
+      font-weight: 600;
+      color: var(--text-parchment);
+      margin-bottom: 6px;
+      line-height: 1.25;
+    }
+
+    .poll-option {
+      margin-bottom: 5px;
+    }
+
+    .poll-option-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+
+    .poll-option-bar {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+    }
+
+    .poll-option-fill {
+      height: 100%;
+      background: var(--gold-primary);
+      transition: width 0.3s ease;
+    }
+
+    /* Right Leaderboard & Activity Card */
+    #rightMeritCard {
+      right: 20px;
+      top: 430px;
+    }
+
+    body.hud-minimal #leftGuideCard,
+    body.hud-minimal #rightMeritCard {
+      display: none;
+    }
+
+    #leaderboardList {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 6px;
+      font-size: 17px;
+    }
+
+    .lb-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 4px 6px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .lb-rank {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      font-size: 14px;
+      font-weight: 700;
+      background: rgba(229, 184, 91, 0.25);
+      color: var(--gold-bright);
+      flex-shrink: 0;
+    }
+
+    .lb-row.top1 .lb-rank {
+      background: #e5b85b;
+      color: #2b0d04;
+    }
+
+    .lb-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+
+    .lb-score {
+      color: var(--gold-bright);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      font-size: 16px;
+    }
+
+    #recentFeed {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(229, 184, 91, 0.28);
+      display: grid;
+      gap: 5px;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .feed-item {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .feed-item b {
+      color: var(--text-parchment);
+    }
+
+    /* 4. Ceremonial Banner Overlay (Gift / Fortune Oracle / Chant) */
+    #ceremonyModal {
+      position: absolute;
+      left: 150px;
+      right: 150px;
+      top: 235px;
+      padding: 20px 28px;
+      border-radius: 24px;
+      border: 2.5px solid var(--gold-bright);
+      background: radial-gradient(ellipse at 50% 0%, rgba(120, 32, 16, 0.96), rgba(32, 10, 5, 0.96));
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8), 0 0 40px rgba(229, 184, 91, 0.35);
+      text-align: center;
+      opacity: 0;
+      transform: translateY(-14px) scale(0.95);
+      transition: opacity 0.38s ease, transform 0.38s cubic-bezier(0.2, 1.3, 0.4, 1);
+    }
+
+    #ceremonyModal.visible {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+
+    #modalBadge {
+      display: inline-block;
+      padding: 4px 16px;
+      border-radius: 999px;
+      background: rgba(229, 184, 91, 0.22);
+      border: 1px solid var(--gold-primary);
+      color: var(--gold-bright);
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    #modalHeadline {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--gold-bright);
+      line-height: 1.2;
+    }
+
+    #modalBody {
+      font-family: var(--font-display);
+      font-size: 22px;
+      line-height: 1.42;
+      color: var(--text-parchment);
+      margin-top: 8px;
+      white-space: pre-line;
+    }
+
+    #modalSubnote {
+      font-family: var(--font-body);
+      font-size: 15px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    /* 5. Audio Unlock Button (Hidden in ?obs=1 mode or once clicked) */
+    #btnEnableAudio {
+      position: absolute;
+      left: 50%;
+      bottom: 185px;
+      transform: translateX(-50%);
+      pointer-events: auto;
+      padding: 14px 32px;
+      border-radius: 999px;
+      border: 2px solid var(--gold-bright);
+      background: linear-gradient(180deg, #9e2416, #5e1209);
+      color: var(--text-parchment);
+      font: 600 22px var(--font-body);
+      cursor: pointer;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.75);
+    }
+
+    body.obs-mode #btnEnableAudio {
+      display: none;
+    }
+
+    /* 6. Bottom Cultural & Ethics Notice Footer */
+    #ethicsFooter {
+      position: absolute;
+      left: 24px;
+      right: 24px;
+      bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      color: rgba(248, 236, 214, 0.72);
+      background: rgba(12, 5, 3, 0.68);
+      padding: 5px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(229, 184, 91, 0.25);
+    }
+  </style>
+</head>
+<body>
+  <div id="viewportFit">
+    <div id="stage9x16">
+      <canvas id="templeCanvas" width="1080" height="1920"></canvas>
+
+      <div class="hud-layer">
+        <!-- Top Plaque -->
+        <header id="topPlaque">
+          <div id="plaqueTitle">Chánh Điện Tịnh Tâm</div>
+          <div id="plaqueSubtitle">Nam Mô A Di Đà Phật · Tâm An Vạn Sự An</div>
+        </header>
+
+        <!-- Status Pills -->
+        <div id="statusPills">
+          <div class="stat-pill">
+            <span class="live-dot" id="connDot"></span>
+            <span id="pillSeated">12/24</span>
+            <span class="label">đang thiền</span>
+          </div>
+          <div class="stat-pill">
+            <span>🔥</span>
+            <span id="pillIncense">27</span>
+            <span class="label">tâm hương</span>
+          </div>
+          <div class="stat-pill">
+            <span>🔔</span>
+            <span id="pillBell">12</span>
+            <span class="label">tiếng chuông</span>
+          </div>
+          <div class="stat-pill">
+            <span>🪷</span>
+            <span id="pillLanterns">9</span>
+            <span class="label">hoa đăng</span>
+          </div>
+          <div class="stat-pill">
+            <span>⏱</span>
+            <span id="pillTimer">00:00:00</span>
+          </div>
+        </div>
+
+        <!-- Left Interaction & Community Card -->
+        <aside id="leftGuideCard" class="side-card">
+          <h3>✦ Pháp Hội Tương Tác ✦</h3>
+          <div class="guide-list">
+            <div>💬 <b>Bình luận lời nguyện</b>: vào thiền &amp; dâng hương</div>
+            <div>🪷 Gõ <b>cầu bình an</b>: thả Đèn Hoa Đăng</div>
+            <div>🎋 Gõ <b>xin xăm</b>: rút Quẻ Thơ Đầu Xuân</div>
+            <div>👘 Gõ <b>nam · nữ · sư · ni · tiểu · bà</b>: đổi áo</div>
+          </div>
+
+          <div class="goal-box">
+            <div class="goal-header">
+              <span id="goalTitle">Đại Nguyện Tâm Hương</span>
+              <span id="goalProgressText">27/108</span>
+            </div>
+            <div class="goal-bar-bg">
+              <div class="goal-bar-fill" id="goalBarFill"></div>
+            </div>
+          </div>
+
+          <div class="poll-box" id="pollContainer">
+            <div class="poll-title" id="pollQuestion">Tâm nguyện hôm nay (Gõ 1, 2, 3):</div>
+            <div id="pollOptionsList"></div>
+          </div>
+        </aside>
+
+        <!-- Right Leaderboard & Recent Rituals Card -->
+        <aside id="rightMeritCard" class="side-card">
+          <h3>✦ Bảng Vàng Tinh Tấn ✦</h3>
+          <ol id="leaderboardList"></ol>
+          <div id="recentFeed"></div>
+        </aside>
+
+        <!-- Center Ceremony / Fortune / Gift Banner -->
+        <section id="ceremonyModal" aria-live="polite">
+          <div id="modalBadge">NGHI THỨC CHÁNH ĐIỆN</div>
+          <div id="modalHeadline">Nam Mô A Di Đà Phật</div>
+          <div id="modalBody">Nguyện cầu gia đạo bình an, vạn sự cát tường</div>
+          <div id="modalSubnote"></div>
+        </section>
+
+        <!-- Audio Unlock Button -->
+        <button id="btnEnableAudio" type="button">🔔 Chạm để bật Âm Thanh Chánh Điện &amp; Giọng Đọc</button>
+
+        <!-- Bottom Cultural & Ethics Notice -->
+        <footer id="ethicsFooter">
+          <span id="ethicsText">Không gian văn hóa &amp; tĩnh tâm trực tuyến · Điểm Tinh Tấn là điểm tương tác ảo trong phiên LIVE</span>
+          <span id="perfIndicator">60 FPS · Kết nối ổn định</span>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./overlay/main.ts"></script>
+</body>
+</html>

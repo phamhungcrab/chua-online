@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="temple-admin-token" content="__TEMPLE_ADMIN_TOKEN__" />
+  <title>Bảng Điều Khiển · Temple Live Studio</title>
+  <style>
+    :root {
+      --bg-0: #0d0604;
+      --bg-1: #180b06;
+      --card-bg: rgba(32, 13, 7, 0.92);
+      --gold: #e5b85b;
+      --gold-bright: #ffe494;
+      --border: rgba(229, 184, 91, 0.38);
+      --text: #f8ecd6;
+      --muted: #c7a980;
+      --crimson: #8c2014;
+      --jade: #4db6ac;
+      --danger: #e57373;
+      --font-display: "Noto Serif", Georgia, serif;
+      --font-body: "Be Vietnam Pro", "Segoe UI", system-ui, sans-serif;
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 50% 0%, #2a0f08 0%, var(--bg-0) 70%);
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+    }
+
+    header.studio-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      border-bottom: 1.5px solid var(--border);
+      background: rgba(18, 7, 4, 0.95);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-title h1 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 22px;
+      color: var(--gold-bright);
+      letter-spacing: 0.04em;
+    }
+
+    .brand-sub {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .top-badges {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .pill-badge {
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      font-size: 13px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .studio-layout {
+      display: grid;
+      grid-template-columns: 370px 1fr;
+      gap: 20px;
+      max-width: 1680px;
+      margin: 0 auto;
+      padding: 20px;
+      align-items: start;
+    }
+
+    @media (max-width: 1120px) {
+      .studio-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .preview-dock {
+      position: sticky;
+      top: 76px;
+      background: var(--card-bg);
+      border: 1.5px solid var(--border);
+      border-radius: 18px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .preview-frame-wrap {
+      width: 338px;
+      height: 600px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 2px solid var(--gold);
+      background: #000;
+      position: relative;
+    }
+
+    .preview-frame-wrap iframe {
+      width: 1080px;
+      height: 1920px;
+      border: 0;
+      transform: scale(0.313);
+      transform-origin: top left;
+      pointer-events: none;
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 18px;
+    }
+
+    .panel-card {
+      background: var(--card-bg);
+      border: 1.5px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+
+    .panel-card.full-span {
+      grid-column: 1 / -1;
+    }
+
+    .panel-card h2 {
+      margin: 0 0 12px 0;
+      font-family: var(--font-display);
+      font-size: 18px;
+      color: var(--gold-bright);
+      border-bottom: 1px solid rgba(229, 184, 91, 0.24);
+      padding-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+
+    .field label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select,
+    textarea {
+      background: rgba(12, 5, 3, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 11px;
+      color: var(--text);
+      font: 14px var(--font-body);
+      width: 100%;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--gold);
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    button {
+      background: rgba(229, 184, 91, 0.14);
+      border: 1px solid var(--gold);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 13px;
+      font: 600 13px var(--font-body);
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    button:hover {
+      background: rgba(229, 184, 91, 0.28);
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    button.primary {
+      background: linear-gradient(180deg, #b8321e, #78190c);
+      border-color: var(--gold-bright);
+      color: var(--gold-bright);
+    }
+
+    button.gold {
+      background: linear-gradient(180deg, #e5b85b, #b58428);
+      color: #260c04;
+      border-color: #fff0b8;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .metric-tile {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(229, 184, 91, 0.24);
+      border-radius: 10px;
+      padding: 8px 10px;
+      text-align: center;
+    }
+
+    .metric-tile .val {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--gold-bright);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric-tile .lbl {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .rules-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    .rules-table th,
+    .rules-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(229, 184, 91, 0.18);
+      text-align: left;
+    }
+
+    .rules-table th {
+      color: var(--gold-bright);
+      font-weight: 600;
+    }
+
+    #toastBar {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      padding: 11px 18px;
+      border-radius: 12px;
+      background: rgba(34, 14, 7, 0.96);
+      border: 1.5px solid var(--gold-bright);
+      color: var(--gold-bright);
+      font-weight: 600;
+      font-size: 14px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      z-index: 50;
+    }
+
+    #toastBar.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <header class="studio-topbar">
+    <div class="brand-title">
+      <span style="font-size: 28px;">🪷</span>
+      <div>
+        <h1>TEMPLE LIVE STUDIO · BẢNG ĐIỀU KHIỂN CHÁNH ĐIỆN</h1>
+        <div class="brand-sub">Kiến trúc 2.5D Tương tác TikTok LIVE · Localhost 127.0.0.1 Protected</div>
+      </div>
+    </div>
+    <div class="top-badges">
+      <span class="pill-badge" id="badgeTikTok">TikTok: IDLE</span>
+      <span class="pill-badge" id="badgeSim">Simulator: TẮT</span>
+      <span class="pill-badge" id="badgePerf">Overlay: 60 FPS</span>
+      <a href="/overlay" target="_blank" style="color: var(--gold-bright); font-size: 13px; font-weight: 600;">Mở Overlay 9:16 ↗</a>
+    </div>
+  </header>
+
+  <main class="studio-layout">
+    <!-- Left Sticky 9:16 Live Preview -->
+    <aside class="preview-dock">
+      <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+        <strong style="color:var(--gold-bright); font-size:14px;">Xem Trước Chánh Điện (9:16)</strong>
+        <span id="previewSeatedCount" style="font-size:12px; color:var(--muted);">12/24 vị</span>
+      </div>
+      <div class="preview-frame-wrap">
+        <iframe src="/overlay?obs=1" title="Live 9:16 Overlay Preview"></iframe>
+      </div>
+      <div class="btn-row" style="justify-content:center; width:100%;">
+        <button type="button" id="btnCopyObsUrl">📋 Copy URL OBS Chuẩn</button>
+        <button type="button" id="btnCopyTransparentUrl">🪟 Copy URL Nền Trong Suốt</button>
+      </div>
+    </aside>
+
+    <!-- Right Control Panels -->
+    <div class="control-grid">
+      <!-- 1. TikTok Connector & Offline Simulator -->
+      <section class="panel-card">
+        <h2>
+          <span>1. Kết Nối TikTok LIVE &amp; Mô Phỏng</span>
+          <small id="connectorDetail" style="font-size:12px; color:var(--muted);">Chưa kết nối</small>
+        </h2>
+        <div class="field">
+          <label for="inpTikTokUser">Tài khoản TikTok đang phát LIVE (@username hoặc URL)</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="inpTikTokUser" placeholder="Ví dụ: @chua_tinh_tam" />
+            <button type="button" class="primary" id="btnConnectTikTok">Kết nối</button>
+            <button type="button" id="btnDisconnectTikTok">Ngắt</button>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:12px;">
+          <label>Chế độ Tự Động Mô Phỏng (Offline Simulator — Không cần TikTok đang LIVE)</label>
+          <div class="btn-row">
+            <button type="button" class="gold" data-sim-mode="serene">▶ Chạy Êm Dịu (Serene)</button>
+            <button type="button" data-sim-mode="busy">▶ Chạy Đông Người (Busy)</button>
+            <button type="button" data-sim-mode="grand_festival">▶ Đại Lễ (Festival)</button>
+            <button type="button" id="btnStopSim">⏹ Dừng Mô Phỏng</button>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:10px;">
+          <label>Quản lý Đạo Tràng &amp; Kiểm Thử Tải Đột Biến (Burst Stress Test)</label>
+          <div class="btn-row">
+            <button type="button" data-fill="24">👥 Đổ 24 Phật tử</button>
+            <button type="button" data-fill="64">👥 Đổ 64 Phật tử</button>
+            <button type="button" id="btnClearCongregation">🧹 Xóa Phật tử mẫu</button>
+            <button type="button" id="btnBurst250">⚡ Burst 250 Events</button>
+            <button type="button" id="btnBurst1000">🔥 Burst 1000 Events</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Manual Event & Ritual Trigger Pad -->
+      <section class="panel-card">
+        <h2><span>2. Bàn Phát Sự Kiện &amp; Nghi Thức Tức Thời</span></h2>
+        <div class="form-row">
+          <div class="field">
+            <label for="inpSimName">Tên Phật tử thử nghiệm</label>
+            <input type="text" id="inpSimName" value="Diệu Hạnh Tâm An" />
+          </div>
+          <div class="field">
+            <label for="inpSimWish">Lời cầu nguyện / Bình luận</label>
+            <input type="text" id="inpSimWish" value="Cầu cho cha mẹ mạnh khỏe, gia đạo bình an" />
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="primary" id="btnTrigIncense">🙏 Bình luận Dâng Hương</button>
+          <button type="button" class="gold" id="btnTrigLantern">🪷 Thả Đèn Hoa Đăng</button>
+          <button type="button" id="btnTrigFortune">🎋 Xin Xăm Đầu Xuân</button>
+          <button type="button" id="btnTrigLike">❤️ Thả Tim (Gõ Mõ)</button>
+          <button type="button" id="btnTrigFollow">🔔 Follow (Thỉnh Chuông)</button>
+          <button type="button" id="btnTrigGiftSmall">🎁 Tặng Hoa Sen (15 xu)</button>
+          <button type="button" class="gold" id="btnTrigGiftGrand">🐉 Đại Lễ Kim Liên (299 xu)</button>
+          <button type="button" id="btnTrigChant">📿 Tụng Kinh Định Kỳ</button>
+        </div>
+        <div class="btn-row" style="margin-top:10px;">
+          <span style="font-size:12px; color:var(--muted); align-self:center;">Thử đổi áo:</span>
+          <button type="button" data-skin-cmd="nữ">Áo Lam Nữ</button>
+          <button type="button" data-skin-cmd="nam">Áo Lam Nam</button>
+          <button type="button" data-skin-cmd="sư">Tăng Sĩ</button>
+          <button type="button" data-skin-cmd="ni">Ni Sư</button>
+          <button type="button" data-skin-cmd="bà">Cụ Bà Áo Nâu</button>
+          <button type="button" data-skin-cmd="tiểu">Chú Tiểu</button>
+          <button type="button" data-skin-cmd="hộ pháp">Hộ Pháp VIP</button>
+        </div>
+      </section>
+
+      <!-- 3. Scene, Ambience & Graphics Settings -->
+      <section class="panel-card">
+        <h2><span>3. Chỉnh Cảnh Chánh Điện, Ánh Sáng &amp; Hiệu Năng</span></h2>
+        <div class="form-row">
+          <div class="field">
+            <label for="inpSceneTitle">Tiêu đề Hoành Phi</label>
+            <input type="text" id="inpSceneTitle" value="Chánh Điện Tịnh Tâm" />
+          </div>
+          <div class="field">
+            <label for="inpSceneSubtitle">Câu đối phụ</label>
+            <input type="text" id="inpSceneSubtitle" value="Nam Mô A Di Đà Phật · Tâm An Vạn Sự An" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="selTimeOfDay">Không gian Ánh sáng (Ambience)</label>
+            <select id="selTimeOfDay">
+              <option value="SACRED_NIGHT">Đêm Thiền Tịnh (Sacred Night)</option>
+              <option value="GOLDEN_DUSK">Hoàng Hôn Vàng Son (Golden Dusk)</option>
+              <option value="DAY_SERENE">Ban Ngày Tịnh Minh (Day Serene)</option>
+              <option value="FESTIVAL_GLOW">Đại Lễ Hoa Đăng (Festival Glow)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="selWeather">Hiệu ứng Thời tiết</label>
+            <select id="selWeather">
+              <option value="CLEAR">Quang Đãng (Clear)</option>
+              <option value="LOTUS_RAIN">Mưa Cánh Sen (Lotus Rain)</option>
+              <option value="MISTY_INCENSE">Sương Trầm Huyền Ảo (Misty Incense)</option>
+              <option value="SPRING_BLOSSOM">Lộc Xuân Khai Hoa (Spring Blossom)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="selSeatCap">Sức chứa Bồ Đoàn</label>
+            <select id="selSeatCap">
+              <option value="auto">Tự động mở rộng (24 → 100)</option>
+              <option value="24">24 chỗ (6×4)</option>
+              <option value="36">36 chỗ (6×6)</option>
+              <option value="64">64 chỗ (8×8)</option>
+              <option value="100">100 chỗ (10×10)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="selQuality">Mức Đồ Họa &amp; FPS</label>
+            <div style="display:flex; gap:6px;">
+              <select id="selQuality">
+                <option value="high">HIGH (Đầy đủ hiệu ứng)</option>
+                <option value="medium">MEDIUM (Cân bằng OBS)</option>
+                <option value="low">LOW (Máy yếu / Tiết kiệm)</option>
+              </select>
+              <select id="selTargetFps">
+                <option value="60">60 FPS</option>
+                <option value="30">30 FPS</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="rngSmoke">Mật độ Khói Hương: <span id="lblSmoke">1.0</span></label>
+            <input type="range" id="rngSmoke" min="0" max="2" step="0.1" value="1.0" />
+          </div>
+          <div class="field">
+            <label for="rngPetal">Mật độ Cánh Hoa Sen: <span id="lblPetal">1.0</span></label>
+            <input type="range" id="rngPetal" min="0" max="2" step="0.1" value="1.0" />
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="gold" id="btnSaveSceneSettings">💾 Lưu Cấu Hình Cảnh</button>
+        </div>
+      </section>
+
+      <!-- 4. Sound Mixer & Vietnamese TTS Engine -->
+      <section class="panel-card">
+        <h2><span>4. Bàn Trộn Âm Thanh (Sound Mixer) &amp; Giọng Đọc TTS</span></h2>
+        <div class="form-row">
+          <div class="field">
+            <label for="rngMasterVol">Âm lượng Tổng (Master): <span id="lblMasterVol">90%</span></label>
+            <input type="range" id="rngMasterVol" min="0" max="1" step="0.05" value="0.9" />
+          </div>
+          <div class="field">
+            <label for="rngMusicVol">Nhạc Thiền Ngũ Cung: <span id="lblMusicVol">55%</span></label>
+            <input type="range" id="rngMusicVol" min="0" max="1" step="0.05" value="0.55" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="rngSfxVol">Pháp Khí (Chuông / Mõ): <span id="lblSfxVol">85%</span></label>
+            <input type="range" id="rngSfxVol" min="0" max="1" step="0.05" value="0.85" />
+          </div>
+          <div class="field">
+            <label for="rngTtsVol">Giọng Đọc Lời Nguyện (TTS): <span id="lblTtsVol">95%</span></label>
+            <input type="range" id="rngTtsVol" min="0" max="1" step="0.05" value="0.95" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="selTtsVoice">Giọng Đọc Tiếng Việt</label>
+            <select id="selTtsVoice">
+              <option value="vi-VN-HoaiMyNeural">Nữ · Hoài My (Ấm áp, truyền cảm)</option>
+              <option value="vi-VN-NamMinhNeural">Nam · Nam Minh (Trầm tĩnh, trang nghiêm)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="inpMoBpm">Nhịp Mõ Tụng Kinh (BPM)</label>
+            <input type="number" id="inpMoBpm" min="20" max="120" value="52" />
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="gold" id="btnSaveAudioSettings">💾 Lưu Cấu Hình Âm Thanh</button>
+        </div>
+      </section>
+
+      <!-- 5. Telemetry & Queue Health Dashboard -->
+      <section class="panel-card full-span">
+        <h2>
+          <span>5. Giám Sát Hiệu Năng, Hàng Đợi &amp; Độ Ổn Định (Telemetry)</span>
+          <button type="button" id="btnResetSession">🔄 Đặt Lại Phiên LIVE (Có Sao Lưu)</button>
+        </h2>
+        <div class="metrics-grid">
+          <div class="metric-tile">
+            <div class="val" id="mAccepted">0</div>
+            <div class="lbl">Sự kiện đã xử lý</div>
+          </div>
+          <div class="metric-tile">
+            <div class="val" id="mDedupe">0</div>
+            <div class="lbl">Chặn trùng (Dedupe)</div>
+          </div>
+          <div class="metric-tile">
+            <div class="val" id="mRateLimited">0</div>
+            <div class="lbl">Rate-Limit / Cooldown</div>
+          </div>
+          <div class="metric-tile">
+            <div class="val" id="mModerated">0</div>
+            <div class="lbl">Chặn Spam / Từ cấm</div>
+          </div>
+          <div class="metric-tile">
+            <div class="val" id="mTtsQueue">0</div>
+            <div class="lbl">Hàng đợi TTS hiện tại</div>
+          </div>
+          <div class="metric-tile">
+            <div class="val" id="mTtsProcessed">0</div>
+            <div class="lbl">Câu TTS đã phát</div>
+          </div>
+          <div class="metric-tile">
+            <div class="val" id="mClientFps">60</div>
+            <div class="lbl">FPS Thực Tế (Overlay)</div>
+          </div>
+          <div class="metric-tile">
+            <div class="val" id="mFrameTime">1.8 ms</div>
+            <div class="lbl">Frame Time Trung Bình</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. Dynamic Event-to-Action Rules Manager -->
+      <section class="panel-card full-span">
+        <h2>
+          <span>6. Quản Lý Luật Tương Tác Động (Event-to-Action Rules Engine)</span>
+          <div class="btn-row" style="margin:0;">
+            <button type="button" id="btnExportConfig">⬇ Xuất JSON Cấu Hình</button>
+          </div>
+        </h2>
+        <table class="rules-table">
+          <thead>
+            <tr>
+              <th>Tên Luật</th>
+              <th>Điều kiện kích hoạt</th>
+              <th>Hành động Nghi thức</th>
+              <th>Ưu tiên</th>
+              <th>Cooldown</th>
+              <th>Trạng thái</th>
+            </tr>
+          </thead>
+          <tbody id="rulesTableBody"></tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+
+  <div id="toastBar">Đã lưu cấu hình</div>
+
+  <script type="module" src="./admin/main.ts"></script>
+</body>
+</html>
