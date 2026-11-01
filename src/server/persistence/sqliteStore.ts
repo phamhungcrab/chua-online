@@ -3,6 +3,9 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { DEFAULT_EVENT_RULES, DEFAULT_SETTINGS } from '../../shared/constants.ts';
 import type {
+  AudioCategory,
+  AudioPlaylist,
+  AudioTrackItem,
   DispatchedRitual,
   EventActionRule,
   OfferingKind,
@@ -94,6 +97,28 @@ export class SqlitePersistenceStore {
         wish_text TEXT NOT NULL,
         category TEXT NOT NULL DEFAULT 'BÌNH AN',
         merit_awarded INTEGER NOT NULL DEFAULT 5,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS audio_tracks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        category TEXT NOT NULL,
+        duration_sec REAL NOT NULL DEFAULT 0,
+        file_size_bytes INTEGER NOT NULL DEFAULT 0,
+        mime_type TEXT NOT NULL DEFAULT 'audio/mpeg',
+        is_default_for TEXT,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS audio_playlists (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        track_ids_json TEXT NOT NULL DEFAULT '[]',
+        mode TEXT NOT NULL DEFAULT 'loop_all',
+        is_active INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL
       );
     `);
@@ -354,6 +379,189 @@ export class SqlitePersistenceStore {
       }
     }
     return fileName;
+  }
+
+  public saveAudioTrack(track: AudioTrackItem): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO audio_tracks (
+        id, name, filename, filepath, category, duration_sec, file_size_bytes, mime_type, is_default_for, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        category = excluded.category,
+        duration_sec = excluded.duration_sec,
+        is_default_for = excluded.is_default_for
+    `);
+    stmt.run(
+      track.id,
+      track.name,
+      track.filename,
+      track.filepath,
+      track.category,
+      track.durationSec,
+      track.fileSizeBytes,
+      track.mimeType,
+      track.isDefaultFor ?? null,
+      track.createdAt
+    );
+  }
+
+  public listAudioTracks(category?: AudioCategory): AudioTrackItem[] {
+    const query = category
+      ? 'SELECT * FROM audio_tracks WHERE category = ? ORDER BY created_at DESC'
+      : 'SELECT * FROM audio_tracks ORDER BY created_at DESC';
+    const rows = (
+      category ? this.db.prepare(query).all(category) : this.db.prepare(query).all()
+    ) as Array<{
+      id: string;
+      name: string;
+      filename: string;
+      filepath: string;
+      category: AudioCategory;
+      duration_sec: number;
+      file_size_bytes: number;
+      mime_type: string;
+      is_default_for: string | null;
+      created_at: number;
+    }>;
+
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      filename: r.filename,
+      filepath: r.filepath,
+      category: r.category,
+      durationSec: r.duration_sec,
+      fileSizeBytes: r.file_size_bytes,
+      mimeType: r.mime_type,
+      isDefaultFor: r.is_default_for,
+      createdAt: r.created_at,
+      url: `/audio-uploads/${encodeURIComponent(r.filename)}`
+    }));
+  }
+
+  public getAudioTrack(id: string): AudioTrackItem | null {
+    const row = this.db.prepare('SELECT * FROM audio_tracks WHERE id = ?').get(id) as
+      | {
+          id: string;
+          name: string;
+          filename: string;
+          filepath: string;
+          category: AudioCategory;
+          duration_sec: number;
+          file_size_bytes: number;
+          mime_type: string;
+          is_default_for: string | null;
+          created_at: number;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      id: row.id,
+      name: row.name,
+      filename: row.filename,
+      filepath: row.filepath,
+      category: row.category,
+      durationSec: row.duration_sec,
+      fileSizeBytes: row.file_size_bytes,
+      mimeType: row.mime_type,
+      isDefaultFor: row.is_default_for,
+      createdAt: row.created_at,
+      url: `/audio-uploads/${encodeURIComponent(row.filename)}`
+    };
+  }
+
+  public updateAudioTrack(
+    id: string,
+    patch: { name?: string; category?: AudioCategory; isDefaultFor?: string | null }
+  ): AudioTrackItem | null {
+    const existing = this.getAudioTrack(id);
+    if (!existing) return null;
+    const name = patch.name !== undefined ? patch.name : existing.name;
+    const category = patch.category !== undefined ? patch.category : existing.category;
+    const isDefaultFor = patch.isDefaultFor !== undefined ? patch.isDefaultFor : (existing.isDefaultFor ?? null);
+
+    // If setting default for a channel, clear default from other tracks
+    if (isDefaultFor) {
+      this.db
+        .prepare('UPDATE audio_tracks SET is_default_for = NULL WHERE is_default_for = ?')
+        .run(isDefaultFor);
+    }
+
+    this.db
+      .prepare('UPDATE audio_tracks SET name = ?, category = ?, is_default_for = ? WHERE id = ?')
+      .run(name, category, isDefaultFor, id);
+
+    return this.getAudioTrack(id);
+  }
+
+  public deleteAudioTrack(id: string): boolean {
+    const track = this.getAudioTrack(id);
+    if (!track) return false;
+    this.db.prepare('DELETE FROM audio_tracks WHERE id = ?').run(id);
+    if (fs.existsSync(track.filepath)) {
+      try {
+        fs.unlinkSync(track.filepath);
+      } catch {
+        // ignore
+      }
+    }
+    return true;
+  }
+
+  public savePlaylist(playlist: AudioPlaylist): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO audio_playlists (id, name, track_ids_json, mode, is_active, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        track_ids_json = excluded.track_ids_json,
+        mode = excluded.mode,
+        is_active = excluded.is_active
+    `);
+    stmt.run(
+      playlist.id,
+      playlist.name,
+      JSON.stringify(playlist.trackIds),
+      playlist.mode,
+      playlist.isActive ? 1 : 0,
+      playlist.createdAt
+    );
+  }
+
+  public listPlaylists(): AudioPlaylist[] {
+    const rows = this.db
+      .prepare('SELECT * FROM audio_playlists ORDER BY created_at DESC')
+      .all() as Array<{
+      id: string;
+      name: string;
+      track_ids_json: string;
+      mode: 'sequence' | 'loop_all' | 'loop_one' | 'shuffle';
+      is_active: number;
+      created_at: number;
+    }>;
+
+    return rows.map((r) => {
+      let trackIds: string[] = [];
+      try {
+        trackIds = JSON.parse(r.track_ids_json);
+      } catch {
+        trackIds = [];
+      }
+      return {
+        id: r.id,
+        name: r.name,
+        trackIds,
+        mode: r.mode,
+        isActive: Boolean(r.is_active),
+        createdAt: r.created_at
+      };
+    });
+  }
+
+  public deletePlaylist(id: string): boolean {
+    const res = this.db.prepare('DELETE FROM audio_playlists WHERE id = ?').run(id);
+    return res.changes > 0;
   }
 
   public close(): void {

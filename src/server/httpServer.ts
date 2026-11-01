@@ -11,6 +11,7 @@ import {
   TempleSettingsPartialSchema
 } from '../shared/schemas.ts';
 import type {
+  AudioTrackItem,
   ITikTokConnector,
   ServerToClientWsMessage,
   TempleStateSnapshot
@@ -38,6 +39,10 @@ const MIME_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
@@ -125,6 +130,8 @@ export async function createStudioServer(options?: {
   const requestedPort = options?.port ?? Number(process.env.PORT || 3000);
   const dataDir = options?.dataDir || path.join(PROJECT_ROOT, 'data');
   const ttsCacheDir = path.join(dataDir, 'tts-cache');
+  const audioUploadsDir = path.join(dataDir, 'audio-uploads');
+  fs.mkdirSync(audioUploadsDir, { recursive: true });
   const clientDistDir = path.join(PROJECT_ROOT, 'dist', 'client');
   const publicDir = path.join(PROJECT_ROOT, 'public');
 
@@ -319,7 +326,67 @@ export async function createStudioServer(options?: {
       return;
     }
 
-    // 2. Protected Admin Endpoints
+    // 2. Audio Upload Endpoint (Binary Multipart/Stream)
+    if (pathname === '/api/admin/audio/upload' && req.method === 'POST') {
+      const headerToken = String(req.headers['x-admin-token'] || '');
+      if (headerToken !== adminToken) {
+        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized: thiếu hoặc sai X-Admin-Token' }));
+        return;
+      }
+
+      try {
+        const rawBuffer = await readBufferBody(req, 40 * 1024 * 1024);
+        const fileNameHeader = req.headers['x-file-name']
+          ? decodeURIComponent(String(req.headers['x-file-name']))
+          : '';
+        const nameHeader = req.headers['x-audio-name']
+          ? decodeURIComponent(String(req.headers['x-audio-name']))
+          : '';
+        const categoryHeader = (
+          req.headers['x-audio-category'] ? String(req.headers['x-audio-category']) : 'meditation'
+        ) as any;
+        const contentType = String(req.headers['content-type'] || 'audio/mpeg');
+
+        const originalName = fileNameHeader || 'audio_track.mp3';
+        const ext = path.extname(originalName).toLowerCase() || '.mp3';
+        const safeExts = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac'];
+        if (!safeExts.includes(ext)) {
+          throw new Error(`Định dạng tệp ${ext} không được hỗ trợ. Vui lòng tải MP3, WAV, OGG, hoặc M4A.`);
+        }
+
+        const fileId = `track_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        const diskFileName = `${fileId}${ext}`;
+        const diskFilePath = path.join(audioUploadsDir, diskFileName);
+
+        fs.writeFileSync(diskFilePath, rawBuffer);
+
+        const trackItem: AudioTrackItem = {
+          id: fileId,
+          name: nameHeader || originalName.replace(ext, ''),
+          filename: diskFileName,
+          filepath: diskFilePath,
+          category: categoryHeader,
+          durationSec: 0,
+          fileSizeBytes: rawBuffer.length,
+          mimeType: contentType,
+          isDefaultFor: null,
+          createdAt: Date.now(),
+          url: `/audio-uploads/${encodeURIComponent(diskFileName)}`
+        };
+
+        store.saveAudioTrack(trackItem);
+
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, track: trackItem, tracks: store.listAudioTracks() }));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: err?.message || 'Lỗi tải lên âm thanh' }));
+      }
+      return;
+    }
+
+    // 3. Protected Admin Endpoints (JSON)
     if (pathname.startsWith('/api/admin/')) {
       if (req.method !== 'POST') {
         res.writeHead(405).end('Method Not Allowed');
@@ -347,6 +414,8 @@ export async function createStudioServer(options?: {
           engine,
           simulator,
           connector,
+          store,
+          tts,
           getFullSnapshot
         });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -387,6 +456,22 @@ export async function createStudioServer(options?: {
         return;
       }
       serveStaticFile(req, res, resolved);
+      return;
+    }
+
+    if (pathname.startsWith('/audio-uploads/')) {
+      const rel = decodeURIComponent(pathname.slice('/audio-uploads/'.length));
+      const allowedExts = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac'];
+      if (!allowedExts.some((ext) => rel.toLowerCase().endsWith(ext))) {
+        res.writeHead(403).end('Forbidden');
+        return;
+      }
+      const resolved = safeResolveFileWithinRoot(audioUploadsDir, rel);
+      if (!resolved) {
+        res.writeHead(404).end('Not found');
+        return;
+      }
+      serveAudioStream(req, res, resolved);
       return;
     }
 
@@ -531,6 +616,8 @@ async function handleAdminAction(
     engine: TempleStateEngine;
     simulator: OfflineEventSimulator;
     connector: ITikTokConnector;
+    store: SqlitePersistenceStore;
+    tts: PriorityTtsService;
     getFullSnapshot: () => TempleStateSnapshot;
   }
 ): Promise<Record<string, any>> {
@@ -649,8 +736,135 @@ async function handleAdminAction(
       return { connector: ctx.connector.getStatus(), snapshot: ctx.getFullSnapshot() };
     }
 
+    case '/api/admin/tiktok/verify': {
+      const uniqueId = String(body.uniqueId || '').trim();
+      if (typeof (ctx.connector as any).verifyRoom === 'function') {
+        const res = await (ctx.connector as any).verifyRoom(uniqueId);
+        return res;
+      }
+      return { verified: false, uniqueId, message: 'Kiểm tra phòng LIVE không khả dụng' };
+    }
+
+    case '/api/admin/audio/tracks': {
+      const category = body.category ? String(body.category) : undefined;
+      const tracks = ctx.store.listAudioTracks(category as any);
+      return { tracks };
+    }
+
+    case '/api/admin/audio/tracks/update': {
+      const id = String(body.id || '');
+      const patch = {
+        name: body.name !== undefined ? String(body.name) : undefined,
+        category: body.category !== undefined ? (body.category as any) : undefined,
+        isDefaultFor:
+          body.isDefaultFor !== undefined
+            ? body.isDefaultFor
+              ? String(body.isDefaultFor)
+              : null
+            : undefined
+      };
+      const updated = ctx.store.updateAudioTrack(id, patch);
+      return { track: updated, tracks: ctx.store.listAudioTracks() };
+    }
+
+    case '/api/admin/audio/tracks/delete': {
+      const id = String(body.id || '');
+      const ok = ctx.store.deleteAudioTrack(id);
+      return { deleted: ok, tracks: ctx.store.listAudioTracks() };
+    }
+
+    case '/api/admin/audio/playlists': {
+      if (body.playlist) {
+        ctx.store.savePlaylist(body.playlist);
+      }
+      return { playlists: ctx.store.listPlaylists() };
+    }
+
+    case '/api/admin/audio/playlists/delete': {
+      const id = String(body.id || '');
+      const ok = ctx.store.deletePlaylist(id);
+      return { deleted: ok, playlists: ctx.store.listPlaylists() };
+    }
+
+    case '/api/admin/audio/preview-tts': {
+      const text = String(body.text || 'Nam mô A Di Đà Phật').slice(0, 320);
+      const voice = body.voice || 'vi-VN-HoaiMyNeural';
+      const ratePercent = Number(body.ratePercent ?? -10);
+      const pitchHz = Number(body.pitchHz ?? -4);
+      const audioUrl = await ctx.tts.synthesize({ text, voice, ratePercent, pitchHz });
+      return { audioUrl, text };
+    }
+
     default:
       throw new Error(`Không tìm thấy endpoint quản trị: ${pathname}`);
+  }
+}
+
+function readBufferBody(req: http.IncomingMessage, maxBytes: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    req.on('data', (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        req.destroy();
+        reject(
+          new Error(
+            `Tệp tải lên vượt quá giới hạn cho phép (${Math.round(maxBytes / (1024 * 1024))}MB)`
+          )
+        );
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', (err) => reject(err));
+  });
+}
+
+function serveAudioStream(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  filePath: string
+): void {
+  try {
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = MIME_TYPES[ext] || 'audio/mpeg';
+
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      if (start >= fileSize || end >= fileSize || start > end) {
+        res.writeHead(416, {
+          'Content-Range': `bytes */${fileSize}`
+        });
+        res.end();
+        return;
+      }
+      const chunkSize = end - start + 1;
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400'
+      });
+      fs.createReadStream(filePath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Accept-Ranges': 'bytes',
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400'
+      });
+      fs.createReadStream(filePath).pipe(res);
+    }
+  } catch {
+    res.writeHead(500).end('Internal Server Error');
   }
 }
 

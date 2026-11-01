@@ -146,14 +146,22 @@ export class PriorityTtsService {
     });
   }
 
-  private async synthesizeOrGetCached(item: QueuedTtsItem): Promise<string | null> {
-    if (!this.synthesizeEnabled) {
-      return null;
-    }
+  public async synthesize(options: {
+    text: string;
+    voice?: 'vi-VN-NamMinhNeural' | 'vi-VN-HoaiMyNeural';
+    ratePercent?: number;
+    pitchHz?: number;
+  }): Promise<string | null> {
+    const cleanText = String(options.text || '').trim().slice(0, 360);
+    if (!cleanText) return null;
+
+    const voice = options.voice || 'vi-VN-HoaiMyNeural';
+    const ratePercent = options.ratePercent ?? -10;
+    const pitchHz = options.pitchHz ?? -4;
 
     const hash = crypto
       .createHash('sha256')
-      .update(`${item.voice}|${item.ratePercent}|${item.pitchHz}|${item.text}`)
+      .update(`${voice}|${ratePercent}|${pitchHz}|${cleanText}`)
       .digest('hex')
       .slice(0, 24);
     const fileName = `tts_${hash}.mp3`;
@@ -167,8 +175,8 @@ export class PriorityTtsService {
     try {
       const { MsEdgeTTS, OUTPUT_FORMAT } = await import('msedge-tts');
       const tts = new MsEdgeTTS();
-      await tts.setMetadata(item.voice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
-      const xmlSafeText = item.text.replace(/[<>&"']/g, (c) => {
+      await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+      const xmlSafeText = cleanText.replace(/[<>&"']/g, (c) => {
         switch (c) {
           case '<':
             return '&lt;';
@@ -183,8 +191,8 @@ export class PriorityTtsService {
         }
       });
 
-      const pitchStr = `${item.pitchHz >= 0 ? '+' : ''}${item.pitchHz}Hz`;
-      const rateStr = `${item.ratePercent >= 0 ? '+' : ''}${item.ratePercent}%`;
+      const pitchStr = `${pitchHz >= 0 ? '+' : ''}${pitchHz}Hz`;
+      const rateStr = `${ratePercent >= 0 ? '+' : ''}${ratePercent}%`;
       const { audioStream } = tts.toStream(xmlSafeText, {
         pitch: pitchStr,
         rate: rateStr
@@ -216,9 +224,21 @@ export class PriorityTtsService {
         return `/tts-cache/${fileName}`;
       }
     } catch {
-      // Offline or Edge TTS unavailable: client overlay automatically falls back to browser Web Speech / chime
+      // Offline or Edge TTS unavailable
     }
     return null;
+  }
+
+  private async synthesizeOrGetCached(item: QueuedTtsItem): Promise<string | null> {
+    if (!this.synthesizeEnabled) {
+      return null;
+    }
+    return this.synthesize({
+      text: item.text,
+      voice: item.voice,
+      ratePercent: item.ratePercent,
+      pitchHz: item.pitchHz
+    });
   }
 
   private pruneCacheFiles(): void {

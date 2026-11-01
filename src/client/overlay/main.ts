@@ -40,18 +40,30 @@ const canvas = document.getElementById('templeCanvas') as HTMLCanvasElement;
 const scene = new TempleSceneEngine(canvas, { transparent: isTransparent });
 const audio = new TempleAudioEngine();
 
+const isMutedMode =
+  urlParams.get('muted') === '1' ||
+  urlParams.get('audio') === '0' ||
+  urlParams.get('preview') === '1';
+
 const btnEnableAudio = document.getElementById('btnEnableAudio') as HTMLButtonElement | null;
 function unlockAudioHandler(): void {
+  if (isMutedMode) return;
   if (audio.unlock() && btnEnableAudio) {
     btnEnableAudio.remove();
   }
 }
-if (btnEnableAudio) {
-  btnEnableAudio.addEventListener('click', unlockAudioHandler);
-}
-window.addEventListener('pointerdown', unlockAudioHandler, { once: true });
-if (isObsMode) {
-  setTimeout(unlockAudioHandler, 400);
+
+if (isMutedMode) {
+  audio.setMuted(true);
+  if (btnEnableAudio) btnEnableAudio.remove();
+} else {
+  if (btnEnableAudio) {
+    btnEnableAudio.addEventListener('click', unlockAudioHandler);
+  }
+  window.addEventListener('pointerdown', unlockAudioHandler, { once: true });
+  if (isObsMode) {
+    setTimeout(unlockAudioHandler, 400);
+  }
 }
 
 // 3. HUD DOM Update Helpers (Strict textContent usage — zero XSS risk)
@@ -268,6 +280,7 @@ function showCeremonyBanner(ritual: DispatchedRitual): void {
 
 // 4. Trigger synthesized temple audio on ritual events
 function playRitualSfx(ritual: DispatchedRitual): void {
+  if (isMutedMode) return;
   switch (ritual.actionType) {
     case 'GRAND_CEREMONY':
       audio.playTempleBell(1.3);
@@ -312,7 +325,9 @@ function connectWebSocket(): void {
 
   ws.onmessage = (ev) => {
     try {
-      audio.unlock(); // Ensure Web Audio unlocks on incoming server events for OBS
+      if (!isMutedMode) {
+        audio.unlock(); // Ensure Web Audio unlocks on incoming server events for OBS
+      }
       const msg = JSON.parse(String(ev.data)) as ServerToClientWsMessage;
       switch (msg.type) {
         case 'snapshot':
@@ -334,10 +349,10 @@ function connectWebSocket(): void {
           break;
         case 'likeBatch':
           scene.triggerLikeBatchVisuals(msg.count);
-          audio.playWoodenFish(1.02);
+          if (!isMutedMode) audio.playWoodenFish(1.02);
           break;
         case 'tts':
-          audio.enqueueTts(msg.tts);
+          if (!isMutedMode) audio.enqueueTts(msg.tts);
           break;
       }
     } catch {

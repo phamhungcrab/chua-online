@@ -40,6 +40,15 @@ export const DEFAULT_SETTINGS: TempleSettings = {
   audioMusicVolume: 0.55,
   audioSfxVolume: 0.85,
   audioTtsVolume: 0.95,
+  audioBellVolume: 0.9,
+  audioWoodenFishVolume: 0.85,
+  audioCeremonyVolume: 0.95,
+  audioDuckingPercent: 70,
+  audioDuckingEnabled: true,
+  ttsModerationStrict: true,
+  ttsReadFreeComments: false,
+  activeBgmTrackId: null,
+  activePlaylistId: null,
   moderationEnabled: true,
   userCooldownMs: 3200
 };

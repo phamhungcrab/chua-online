@@ -263,8 +263,51 @@ export interface TempleSettings {
   audioMusicVolume: number;
   audioSfxVolume: number;
   audioTtsVolume: number;
+  audioBellVolume: number;
+  audioWoodenFishVolume: number;
+  audioCeremonyVolume: number;
+  audioDuckingPercent: number;
+  audioDuckingEnabled: boolean;
+  ttsModerationStrict: boolean;
+  ttsReadFreeComments: boolean;
+  activeBgmTrackId: string | null;
+  activePlaylistId: string | null;
   moderationEnabled: boolean;
   userCooldownMs: number;
+}
+
+export type AudioCategory =
+  | 'chant'
+  | 'buddha_name'
+  | 'meditation'
+  | 'bell'
+  | 'wooden_fish'
+  | 'prayer'
+  | 'greeting'
+  | 'festival'
+  | 'sfx';
+
+export interface AudioTrackItem {
+  id: string;
+  name: string;
+  filename: string;
+  filepath: string;
+  category: AudioCategory;
+  durationSec: number;
+  fileSizeBytes: number;
+  mimeType: string;
+  isDefaultFor?: string | null;
+  createdAt: number;
+  url: string;
+}
+
+export interface AudioPlaylist {
+  id: string;
+  name: string;
+  trackIds: string[];
+  mode: 'sequence' | 'loop_all' | 'loop_one' | 'shuffle';
+  isActive: boolean;
+  createdAt: number;
 }
 
 export interface ConnectorStatus {
@@ -361,6 +404,7 @@ export interface ITikTokConnector {
   getStatus(): ConnectorStatus;
   connect(uniqueId: string): Promise<ConnectorStatus>;
   disconnect(): Promise<void>;
+  verifyRoom?(uniqueId: string): Promise<{ verified: boolean; uniqueId: string; roomId?: string; message?: string }>;
   onEvent(handler: (event: NormalizedLiveEvent) => void): void;
   onStatusChange(handler: (status: ConnectorStatus) => void): void;
 }

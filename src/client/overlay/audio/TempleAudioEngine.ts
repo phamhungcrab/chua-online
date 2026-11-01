@@ -1,29 +1,44 @@
 import type { TempleSettings, TtsBroadcastPayload } from '../../../shared/types.ts';
 
 /**
- * TempleAudioEngine (Web Audio API Synthesizer + Priority TTS Player with Auto-Ducking)
+ * TempleAudioEngine (Web Audio API Synthesizer + Priority TTS Player with Dynamic Auto-Ducking)
  * - Synthesizes authentic Vietnamese temple percussion & bells (0dBFS safe):
  *   1. Đại Hồng Chung (4-partial metallic bronze bell with long decay)
  *   2. Mõ Gỗ Tụng Kinh (Bandpass-filtered wooden fish percussion with rate limiting)
  *   3. Chuông Bát Nhã (Singing bowl harmonic chime)
  *   4. Ống Xăm Tre (Bamboo fortune stick shaker)
  *   5. Nhạc Thiền Ngũ Cung (Generative ambient pentatonic zither/bell loop)
- * - Plays server-generated Neural TTS MP3s or gracefully falls back to Vietnamese Web Speech API
- *   with smooth background music auto-ducking.
+ * - Anti-Clipping Master Dynamics Compressor / Limiter.
+ * - STRICT Vietnamese-Only TTS Fallback (never falls back to English OS voice; plays incense chime if no Vietnamese voice).
+ * - Multi-channel gain mixer (Master, BGM, Bell, Wooden Fish, Ceremony, TTS).
+ * - Safe Muted Mode for admin previews (prevents overlapping echo audio).
  */
 export class TempleAudioEngine {
   private ctx: AudioContext | null = null;
+  private limiter: DynamicsCompressorNode | null = null;
   private masterGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
-  private sfxGain: GainNode | null = null;
+  private bellGain: GainNode | null = null;
+  private woodenFishGain: GainNode | null = null;
+  private ceremonyGain: GainNode | null = null;
+  private ttsGain: GainNode | null = null;
+  private sfxGain: GainNode | null = null; // compatibility alias
 
   private unlocked = false;
+  private isMuted = false;
+  private customBgmAudio: HTMLAudioElement | null = null;
+
   private settings: Pick<
     TempleSettings,
     | 'audioMasterVolume'
     | 'audioMusicVolume'
     | 'audioSfxVolume'
     | 'audioTtsVolume'
+    | 'audioBellVolume'
+    | 'audioWoodenFishVolume'
+    | 'audioCeremonyVolume'
+    | 'audioDuckingPercent'
+    | 'audioDuckingEnabled'
     | 'ttsEnabled'
     | 'woodenFishRhythmEnabled'
     | 'woodenFishBpm'
@@ -32,6 +47,11 @@ export class TempleAudioEngine {
     audioMusicVolume: 0.55,
     audioSfxVolume: 0.85,
     audioTtsVolume: 0.95,
+    audioBellVolume: 0.9,
+    audioWoodenFishVolume: 0.85,
+    audioCeremonyVolume: 0.95,
+    audioDuckingPercent: 70,
+    audioDuckingEnabled: true,
     ttsEnabled: true,
     woodenFishRhythmEnabled: true,
     woodenFishBpm: 52
@@ -45,23 +65,65 @@ export class TempleAudioEngine {
   private readonly ttsQueue: TtsBroadcastPayload[] = [];
   private ttsPlaying = false;
 
+  public setMuted(muted: boolean): void {
+    this.isMuted = muted;
+    if (this.masterGain && this.ctx) {
+      const now = this.ctx.currentTime;
+      this.masterGain.gain.cancelScheduledValues(now);
+      this.masterGain.gain.setValueAtTime(muted ? 0 : this.settings.audioMasterVolume, now);
+    }
+    if (muted && this.customBgmAudio) {
+      this.customBgmAudio.pause();
+    }
+  }
+
+  public getIsMuted(): boolean {
+    return this.isMuted;
+  }
+
   public unlock(): boolean {
+    if (this.isMuted) return false;
     try {
       if (!this.ctx) {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
         if (!AudioCtx) return false;
         this.ctx = new AudioCtx();
+
+        // 1. Master Limiter to prevent clipping / distortion
+        this.limiter = this.ctx.createDynamicsCompressor();
+        this.limiter.threshold.setValueAtTime(-2.0, this.ctx.currentTime);
+        this.limiter.knee.setValueAtTime(6.0, this.ctx.currentTime);
+        this.limiter.ratio.setValueAtTime(12.0, this.ctx.currentTime);
+        this.limiter.attack.setValueAtTime(0.003, this.ctx.currentTime);
+        this.limiter.release.setValueAtTime(0.15, this.ctx.currentTime);
+        this.limiter.connect(this.ctx.destination);
+
+        // 2. Master Gain
         this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.value = this.isMuted ? 0 : this.settings.audioMasterVolume;
+        this.masterGain.connect(this.limiter);
+
+        // 3. Sub-channels
         this.musicGain = this.ctx.createGain();
+        this.bellGain = this.ctx.createGain();
+        this.woodenFishGain = this.ctx.createGain();
+        this.ceremonyGain = this.ctx.createGain();
+        this.ttsGain = this.ctx.createGain();
         this.sfxGain = this.ctx.createGain();
 
-        this.masterGain.gain.value = this.settings.audioMasterVolume;
         this.musicGain.gain.value = this.settings.audioMusicVolume;
+        this.bellGain.gain.value = this.settings.audioBellVolume ?? 0.9;
+        this.woodenFishGain.gain.value = this.settings.audioWoodenFishVolume ?? 0.85;
+        this.ceremonyGain.gain.value = this.settings.audioCeremonyVolume ?? 0.95;
+        this.ttsGain.gain.value = this.settings.audioTtsVolume;
         this.sfxGain.gain.value = this.settings.audioSfxVolume;
 
         this.musicGain.connect(this.masterGain);
+        this.bellGain.connect(this.masterGain);
+        this.woodenFishGain.connect(this.masterGain);
+        this.ceremonyGain.connect(this.masterGain);
+        this.ttsGain.connect(this.masterGain);
         this.sfxGain.connect(this.masterGain);
-        this.masterGain.connect(this.ctx.destination);
       }
 
       if (this.ctx.state === 'suspended') {
@@ -77,7 +139,7 @@ export class TempleAudioEngine {
   }
 
   public isUnlocked(): boolean {
-    return this.unlocked;
+    return this.unlocked && !this.isMuted;
   }
 
   public applySettings(newSettings: TempleSettings): void {
@@ -86,6 +148,11 @@ export class TempleAudioEngine {
       audioMusicVolume: newSettings.audioMusicVolume,
       audioSfxVolume: newSettings.audioSfxVolume,
       audioTtsVolume: newSettings.audioTtsVolume,
+      audioBellVolume: newSettings.audioBellVolume ?? 0.9,
+      audioWoodenFishVolume: newSettings.audioWoodenFishVolume ?? 0.85,
+      audioCeremonyVolume: newSettings.audioCeremonyVolume ?? 0.95,
+      audioDuckingPercent: newSettings.audioDuckingPercent ?? 70,
+      audioDuckingEnabled: newSettings.audioDuckingEnabled ?? true,
       ttsEnabled: newSettings.ttsEnabled,
       woodenFishRhythmEnabled: newSettings.woodenFishRhythmEnabled,
       woodenFishBpm: newSettings.woodenFishBpm
@@ -93,34 +160,46 @@ export class TempleAudioEngine {
 
     if (this.ctx && this.masterGain && this.musicGain && this.sfxGain) {
       const now = this.ctx.currentTime;
-      this.masterGain.gain.setTargetAtTime(this.settings.audioMasterVolume, now, 0.08);
+      if (!this.isMuted) {
+        this.masterGain.gain.setTargetAtTime(this.settings.audioMasterVolume, now, 0.08);
+      }
+      const duckRatio = this.settings.audioDuckingEnabled
+        ? Math.max(0.1, (100 - this.settings.audioDuckingPercent) / 100)
+        : 1.0;
       const targetMusic = this.ttsPlaying
-        ? this.settings.audioMusicVolume * 0.28
+        ? this.settings.audioMusicVolume * duckRatio
         : this.settings.audioMusicVolume;
+
       this.musicGain.gain.setTargetAtTime(targetMusic, now, 0.15);
       this.sfxGain.gain.setTargetAtTime(this.settings.audioSfxVolume, now, 0.08);
+      if (this.bellGain) this.bellGain.gain.setTargetAtTime(this.settings.audioBellVolume, now, 0.08);
+      if (this.woodenFishGain) this.woodenFishGain.gain.setTargetAtTime(this.settings.audioWoodenFishVolume, now, 0.08);
+      if (this.ceremonyGain) this.ceremonyGain.gain.setTargetAtTime(this.settings.audioCeremonyVolume, now, 0.08);
+      if (this.ttsGain) this.ttsGain.gain.setTargetAtTime(this.settings.audioTtsVolume, now, 0.08);
     }
 
     this.rescheduleRhythmMo();
   }
 
   private setDucking(ducked: boolean): void {
-    if (!this.ctx || !this.musicGain) return;
+    if (!this.ctx || !this.musicGain || !this.settings.audioDuckingEnabled) return;
     const now = this.ctx.currentTime;
+    const duckRatio = Math.max(0.1, (100 - this.settings.audioDuckingPercent) / 100);
     const target = ducked
-      ? this.settings.audioMusicVolume * 0.25
+      ? this.settings.audioMusicVolume * duckRatio
       : this.settings.audioMusicVolume;
+
     this.musicGain.gain.cancelScheduledValues(now);
     this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, now);
-    this.musicGain.gain.linearRampToValueAtTime(target, now + 0.35);
+    this.musicGain.gain.linearRampToValueAtTime(target, now + (ducked ? 0.2 : 0.65));
   }
 
   private startAmbientLoop(): void {
-    if (this.ambientTimer) return;
+    if (this.ambientTimer || this.isMuted) return;
     const PENTATONIC_HZ = [196.0, 220.0, 261.63, 293.66, 329.63, 392.0, 440.0];
 
     const playNote = () => {
-      if (!this.ctx || !this.musicGain || this.settings.audioMusicVolume <= 0.01) return;
+      if (!this.ctx || !this.musicGain || this.isMuted || this.settings.audioMusicVolume <= 0.01) return;
       try {
         const now = this.ctx.currentTime;
         const freq = PENTATONIC_HZ[this.ambientNoteStep++ % PENTATONIC_HZ.length];
@@ -152,7 +231,7 @@ export class TempleAudioEngine {
       clearInterval(this.rhythmMoTimer);
       this.rhythmMoTimer = null;
     }
-    if (this.unlocked && this.settings.woodenFishRhythmEnabled) {
+    if (this.unlocked && !this.isMuted && this.settings.woodenFishRhythmEnabled) {
       const intervalMs = Math.round(60000 / Math.max(20, Math.min(120, this.settings.woodenFishBpm)));
       this.rhythmMoTimer = setInterval(() => {
         if (!this.ttsPlaying) {
@@ -166,12 +245,15 @@ export class TempleAudioEngine {
    * Wooden Fish Percussion (Mõ Gỗ) — rate-limited to max 5 hits/sec to prevent clipping.
    */
   public playWoodenFish(pitchScale = 1.0): void {
-    if (!this.ctx || !this.sfxGain || this.settings.audioSfxVolume <= 0.01) return;
+    if (!this.ctx || this.isMuted || (this.settings.audioWoodenFishVolume <= 0.01 && this.settings.audioSfxVolume <= 0.01)) return;
     const nowMs = performance.now();
     if (nowMs - this.lastMoAt < 180) return;
     this.lastMoAt = nowMs;
 
     try {
+      const targetGain = this.woodenFishGain || this.sfxGain || this.masterGain;
+      if (!targetGain) return;
+
       const t = this.ctx.currentTime;
       const baseFreq = 610 * pitchScale * (0.98 + Math.random() * 0.04);
 
@@ -194,7 +276,7 @@ export class TempleAudioEngine {
 
       osc.connect(filter);
       filter.connect(gain);
-      gain.connect(this.sfxGain);
+      gain.connect(targetGain);
 
       osc.start(t);
       osc.stop(t + 0.16);
@@ -207,8 +289,11 @@ export class TempleAudioEngine {
    * Temple Bronze Bell (Đại Hồng Chung) — 4 harmonic partials with warm metallic resonance.
    */
   public playTempleBell(intensity = 1.0): void {
-    if (!this.ctx || !this.sfxGain || this.settings.audioSfxVolume <= 0.01) return;
+    if (!this.ctx || this.isMuted || (this.settings.audioBellVolume <= 0.01 && this.settings.audioSfxVolume <= 0.01)) return;
     try {
+      const targetGain = this.bellGain || this.sfxGain || this.masterGain;
+      if (!targetGain) return;
+
       const t = this.ctx.currentTime;
       const k = Math.max(0.5, Math.min(1.5, intensity));
       const partials: ReadonlyArray<[number, number, number]> = [
@@ -229,7 +314,7 @@ export class TempleAudioEngine {
         gain.gain.exponentialRampToValueAtTime(0.0001, t + decay);
 
         osc.connect(gain);
-        gain.connect(this.sfxGain);
+        gain.connect(targetGain);
         osc.start(t);
         osc.stop(t + decay + 0.05);
       }
@@ -238,9 +323,15 @@ export class TempleAudioEngine {
     }
   }
 
+  /**
+   * Chuông Bát Nhã (Incense Singing Bowl Chime)
+   */
   public playIncenseChime(): void {
-    if (!this.ctx || !this.sfxGain || this.settings.audioSfxVolume <= 0.01) return;
+    if (!this.ctx || this.isMuted || (this.settings.audioBellVolume <= 0.01 && this.settings.audioSfxVolume <= 0.01)) return;
     try {
+      const targetGain = this.bellGain || this.sfxGain || this.masterGain;
+      if (!targetGain) return;
+
       const t = this.ctx.currentTime;
       for (const [idx, freq] of [528, 660].entries()) {
         const osc = this.ctx.createOscillator();
@@ -253,7 +344,7 @@ export class TempleAudioEngine {
         gain.gain.exponentialRampToValueAtTime(0.0001, t + idx * 0.11 + 1.1);
 
         osc.connect(gain);
-        gain.connect(this.sfxGain);
+        gain.connect(targetGain);
         osc.start(t + idx * 0.11);
         osc.stop(t + idx * 0.11 + 1.15);
       }
@@ -263,6 +354,7 @@ export class TempleAudioEngine {
   }
 
   public playFortuneShake(): void {
+    if (this.isMuted) return;
     for (let i = 0; i < 4; i++) {
       setTimeout(() => {
         this.playWoodenFish(1.3 + (i % 2) * 0.15);
@@ -271,7 +363,7 @@ export class TempleAudioEngine {
   }
 
   public enqueueTts(payload: TtsBroadcastPayload): void {
-    if (!this.settings.ttsEnabled) return;
+    if (!this.settings.ttsEnabled || this.isMuted) return;
     if (this.ttsQueue.length >= 12) {
       this.ttsQueue.shift();
     }
@@ -280,12 +372,12 @@ export class TempleAudioEngine {
   }
 
   private async drainTtsQueue(): Promise<void> {
-    if (this.ttsPlaying || this.ttsQueue.length === 0) return;
+    if (this.ttsPlaying || this.ttsQueue.length === 0 || this.isMuted) return;
     this.ttsPlaying = true;
     this.setDucking(true);
 
     try {
-      while (this.ttsQueue.length > 0) {
+      while (this.ttsQueue.length > 0 && !this.isMuted) {
         const next = this.ttsQueue.shift()!;
         if (next.audioUrl && this.unlocked) {
           await this.playAudioUrl(next.audioUrl);
@@ -300,10 +392,15 @@ export class TempleAudioEngine {
   }
 
   private playAudioUrl(url: string): Promise<void> {
+    if (this.isMuted) return Promise.resolve();
     return new Promise((resolve) => {
       try {
         const audio = new Audio(url);
-        audio.volume = Math.max(0, Math.min(1, this.settings.audioTtsVolume * this.settings.audioMasterVolume));
+        const effectiveVol = Math.max(
+          0,
+          Math.min(1, this.settings.audioTtsVolume * this.settings.audioMasterVolume)
+        );
+        audio.volume = effectiveVol;
         const timeout = setTimeout(() => resolve(), 18000);
         audio.onended = () => {
           clearTimeout(timeout);
@@ -323,12 +420,40 @@ export class TempleAudioEngine {
     });
   }
 
+  /**
+   * STRICT Vietnamese-Only Speech Synthesis Fallback.
+   * If the host browser/OS has NO Vietnamese voice installed, this NEVER calls synth.speak()
+   * (which would otherwise default to an English voice speaking gibberish).
+   * Instead, it gracefully chimes a sacred temple singing bowl and resolves cleanly.
+   */
   private playBrowserSpeechFallback(text: string): Promise<void> {
+    if (this.isMuted) return Promise.resolve();
     return new Promise((resolve) => {
       try {
         const synth = window.speechSynthesis;
+        if (!synth) {
+          resolve();
+          return;
+        }
+
+        const voices = typeof synth.getVoices === 'function' ? synth.getVoices() : [];
+        const viVoice = voices.find(
+          (v) =>
+            v.lang.toLowerCase().startsWith('vi') ||
+            v.lang.toLowerCase().replace('_', '-').includes('vi-vn') ||
+            v.name.toLowerCase().includes('vietnam')
+        );
+
+        if (!viVoice) {
+          // Zero English speech: play gentle chime instead of American accented gibberish
+          this.playIncenseChime();
+          resolve();
+          return;
+        }
+
         const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = 'vi-VN';
+        utter.voice = viVoice;
+        utter.lang = viVoice.lang || 'vi-VN';
         utter.rate = 0.92;
         utter.volume = Math.max(0, Math.min(1, this.settings.audioTtsVolume));
         const timeout = setTimeout(() => resolve(), 10000);

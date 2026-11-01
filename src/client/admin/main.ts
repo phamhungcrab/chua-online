@@ -138,16 +138,108 @@ function renderSnapshot(snap: TempleStateSnapshot): void {
     chkIdleSerene.checked = Boolean(snap.settings.idleSereneChimes);
     chkPrayers.checked = Boolean(snap.settings.collectivePrayersEnabled);
 
-    rngMasterVol.value = String(snap.settings.audioMasterVolume);
-    rngMusicVol.value = String(snap.settings.audioMusicVolume);
-    rngSfxVol.value = String(snap.settings.audioSfxVolume);
-    rngTtsVol.value = String(snap.settings.audioTtsVolume);
-    lblMasterVol.textContent = `${Math.round(snap.settings.audioMasterVolume * 100)}%`;
-    lblMusicVol.textContent = `${Math.round(snap.settings.audioMusicVolume * 100)}%`;
-    lblSfxVol.textContent = `${Math.round(snap.settings.audioSfxVolume * 100)}%`;
-    lblTtsVol.textContent = `${Math.round(snap.settings.audioTtsVolume * 100)}%`;
-    selTtsVoice.value = snap.settings.ttsVoice;
-    inpMoBpm.value = String(snap.settings.woodenFishBpm);
+    const s = snap.settings;
+    const faderMaster = document.getElementById('faderMaster') as HTMLInputElement | null;
+    const faderBgm = document.getElementById('faderBgm') as HTMLInputElement | null;
+    const faderBell = document.getElementById('faderBell') as HTMLInputElement | null;
+    const faderMo = document.getElementById('faderMo') as HTMLInputElement | null;
+    const faderCeremony = document.getElementById('faderCeremony') as HTMLInputElement | null;
+    const faderTts = document.getElementById('faderTts') as HTMLInputElement | null;
+
+    if (faderMaster) {
+      faderMaster.value = String(s.audioMasterVolume);
+      const el = document.getElementById('valMixMaster');
+      if (el) el.textContent = `${Math.round(s.audioMasterVolume * 100)}%`;
+    }
+    if (faderBgm) {
+      faderBgm.value = String(s.audioMusicVolume);
+      const el = document.getElementById('valMixBgm');
+      if (el) el.textContent = `${Math.round(s.audioMusicVolume * 100)}%`;
+    }
+    if (faderBell) {
+      faderBell.value = String(s.audioBellVolume ?? 0.9);
+      const el = document.getElementById('valMixBell');
+      if (el) el.textContent = `${Math.round((s.audioBellVolume ?? 0.9) * 100)}%`;
+    }
+    if (faderMo) {
+      faderMo.value = String(s.audioWoodenFishVolume ?? 0.85);
+      const el = document.getElementById('valMixMo');
+      if (el) el.textContent = `${Math.round((s.audioWoodenFishVolume ?? 0.85) * 100)}%`;
+    }
+    if (faderCeremony) {
+      faderCeremony.value = String(s.audioCeremonyVolume ?? 0.95);
+      const el = document.getElementById('valMixCeremony');
+      if (el) el.textContent = `${Math.round((s.audioCeremonyVolume ?? 0.95) * 100)}%`;
+    }
+    if (faderTts) {
+      faderTts.value = String(s.audioTtsVolume);
+      const el = document.getElementById('valMixTts');
+      if (el) el.textContent = `${Math.round(s.audioTtsVolume * 100)}%`;
+    }
+
+    const selVoice = document.getElementById('selTtsVoice') as HTMLSelectElement | null;
+    if (selVoice) selVoice.value = s.ttsVoice;
+
+    const rngRate = document.getElementById('rngTtsRate') as HTMLInputElement | null;
+    if (rngRate) {
+      rngRate.value = String(s.ttsRatePercent ?? -12);
+      const el = document.getElementById('lblTtsRate');
+      if (el) el.textContent = `${s.ttsRatePercent}% (Trang nghiêm)`;
+    }
+
+    const rngPitch = document.getElementById('rngTtsPitch') as HTMLInputElement | null;
+    if (rngPitch) {
+      rngPitch.value = String(s.ttsPitchHz ?? -6);
+      const el = document.getElementById('lblTtsPitch');
+      if (el) el.textContent = `${s.ttsPitchHz}Hz (Ấm trầm)`;
+    }
+
+    const inpDiamonds = document.getElementById('inpTtsMinDiamonds') as HTMLInputElement | null;
+    if (inpDiamonds) inpDiamonds.value = String(s.ttsMinGiftDiamonds ?? 1);
+
+    const chkFreeComments = document.getElementById('chkReadFreeComments') as HTMLInputElement | null;
+    if (chkFreeComments) chkFreeComments.checked = Boolean(s.ttsReadFreeComments);
+
+    const chkReadPrayers = document.getElementById('chkReadPrayers') as HTMLInputElement | null;
+    if (chkReadPrayers) chkReadPrayers.checked = Boolean(s.ttsReadPrayers);
+
+    const chkReadFortunes = document.getElementById('chkReadFortunes') as HTMLInputElement | null;
+    if (chkReadFortunes) chkReadFortunes.checked = Boolean(s.ttsReadFortunes);
+
+    const chkModStrict = document.getElementById('chkModerationStrict') as HTMLInputElement | null;
+    if (chkModStrict) chkModStrict.checked = Boolean(s.moderationEnabled);
+
+    const chkDucking = document.getElementById('chkAudioDucking') as HTMLInputElement | null;
+    if (chkDucking) chkDucking.checked = Boolean(s.audioDuckingEnabled ?? true);
+
+    const rngDucking = document.getElementById('rngDuckingPercent') as HTMLInputElement | null;
+    if (rngDucking) {
+      rngDucking.value = String(s.audioDuckingPercent ?? 70);
+      const el = document.getElementById('lblDuckingPercent');
+      if (el) el.textContent = `${s.audioDuckingPercent ?? 70}%`;
+    }
+
+    const chkChant = document.getElementById('chkAutoChant') as HTMLInputElement | null;
+    if (chkChant) chkChant.checked = Boolean(s.autoChantEnabled);
+
+    const inpChantInterval = document.getElementById('inpAutoChantInterval') as HTMLInputElement | null;
+    if (inpChantInterval) inpChantInterval.value = String(s.autoChantIntervalMin ?? 4);
+
+    const chkMoRhythm = document.getElementById('chkWoodenFishRhythm') as HTMLInputElement | null;
+    if (chkMoRhythm) chkMoRhythm.checked = Boolean(s.woodenFishRhythmEnabled);
+
+    const inpBpm = document.getElementById('inpMoBpm') as HTMLInputElement | null;
+    if (inpBpm) {
+      inpBpm.value = String(s.woodenFishBpm ?? 52);
+      const el = document.getElementById('lblMoBpm');
+      if (el) el.textContent = `${s.woodenFishBpm ?? 52} BPM`;
+    }
+
+    const btnMasterTts = document.getElementById('btnToggleMasterTts');
+    if (btnMasterTts) {
+      btnMasterTts.textContent = s.ttsEnabled ? '🎙️ Giọng Đọc: ĐANG BẬT' : '🔇 ĐÃ TẮT GIỌNG ĐỌC';
+      btnMasterTts.className = s.ttsEnabled ? 'gold' : '';
+    }
   }
 
   if (snap.prayers && snap.prayers.length > 0) {
@@ -378,35 +470,448 @@ document.getElementById('btnSaveSceneSettings')!.onclick = async () => {
   }
 };
 
-rngMasterVol.oninput = () => {
-  lblMasterVol.textContent = `${Math.round(Number(rngMasterVol.value) * 100)}%`;
-};
-rngMusicVol.oninput = () => {
-  lblMusicVol.textContent = `${Math.round(Number(rngMusicVol.value) * 100)}%`;
-};
-rngSfxVol.oninput = () => {
-  lblSfxVol.textContent = `${Math.round(Number(rngSfxVol.value) * 100)}%`;
-};
-rngTtsVol.oninput = () => {
-  lblTtsVol.textContent = `${Math.round(Number(rngTtsVol.value) * 100)}%`;
-};
+// ======================================================================
+// AUDIO & RITUAL CONTROL CENTER LOGIC
+// ======================================================================
 
-document.getElementById('btnSaveAudioSettings')!.onclick = async () => {
+// 1. Navigation Tabs
+document.querySelectorAll<HTMLButtonElement>('.audio-tab-btn[data-tab]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.audio-tab-btn[data-tab]').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.audio-tab-panel').forEach((p) => p.classList.remove('active'));
+    btn.classList.add('active');
+    const tabId = btn.getAttribute('data-tab');
+    if (tabId) {
+      document.getElementById(tabId)?.classList.add('active');
+    }
+  });
+});
+
+// 2. Audio Track Management & Rendering
+let currentCategoryFilter = 'all';
+
+async function loadAudioTracks(): Promise<void> {
   try {
-    const res = await callAdminApi('/api/admin/settings', {
-      audioMasterVolume: Number(rngMasterVol.value),
-      audioMusicVolume: Number(rngMusicVol.value),
-      audioSfxVolume: Number(rngSfxVol.value),
-      audioTtsVolume: Number(rngTtsVol.value),
-      ttsVoice: selTtsVoice.value,
-      woodenFishBpm: Number(inpMoBpm.value)
+    const res = await callAdminApi('/api/admin/audio/tracks', {
+      category: currentCategoryFilter === 'all' ? undefined : currentCategoryFilter
     });
-    renderSnapshot(res.snapshot);
-    showToast('Đã lưu cấu hình Âm thanh & Giọng đọc');
-  } catch (e: any) {
-    showToast(`Lỗi: ${e.message}`);
+    renderAudioTracks(res.tracks || []);
+  } catch {
+    // ignore
   }
-};
+}
+
+function renderAudioTracks(tracks: any[]): void {
+  const container = document.getElementById('audioTrackListContainer');
+  const badge = document.getElementById('audioTrackCountBadge');
+  if (badge) badge.textContent = `${tracks.length} tệp âm thanh`;
+  if (!container) return;
+
+  if (tracks.length === 0) {
+    container.innerHTML =
+      '<div style="color:var(--muted); font-size:13px; text-align:center; padding:18px;">Chưa có tệp âm thanh nào trong mục này. Hãy kéo thả tệp MP3/WAV/OGG ở trên.</div>';
+    return;
+  }
+
+  container.replaceChildren();
+  for (const tr of tracks) {
+    const card = document.createElement('div');
+    card.className = 'audio-track-card';
+    const dateStr = new Date(tr.createdAt).toLocaleDateString('vi-VN');
+    const sizeMb = (tr.fileSizeBytes / (1024 * 1024)).toFixed(1);
+
+    const catNames: Record<string, string> = {
+      meditation: 'Nhạc Thiền (BGM)',
+      chant: 'Tụng Kinh',
+      buddha_name: 'Niệm Phật',
+      bell: 'Tiếng Chuông',
+      wooden_fish: 'Tiếng Mõ',
+      prayer: 'Lời Cầu Nguyện',
+      greeting: 'Lời Chào',
+      festival: 'Lễ Hội',
+      sfx: 'Hiệu Ứng'
+    };
+    const catDisplay = catNames[tr.category] || tr.category;
+
+    card.innerHTML = `
+      <div class="audio-track-info">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="audio-category-pill">${catDisplay}</span>
+          <span class="audio-track-title">${tr.name}</span>
+        </div>
+        <div class="audio-track-meta">
+          <span>📁 ${tr.filename}</span>
+          <span>⚖️ ${sizeMb} MB</span>
+          <span>📅 ${dateStr}</span>
+        </div>
+        <audio controls src="${tr.url}" preload="none" style="width:100%; height:32px; margin-top:4px;"></audio>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+        <select class="sel-track-default" data-track-id="${tr.id}" style="font-size:12px; padding:4px 6px;">
+          <option value="" ${!tr.isDefaultFor ? 'selected' : ''}>-- Không gán mặc định --</option>
+          <option value="bgm" ${tr.isDefaultFor === 'bgm' ? 'selected' : ''}>🎵 Làm Nhạc Nền (BGM)</option>
+          <option value="bell" ${tr.isDefaultFor === 'bell' ? 'selected' : ''}>🔔 Tiếng Chuông Lớn</option>
+          <option value="wooden_fish" ${tr.isDefaultFor === 'wooden_fish' ? 'selected' : ''}>🪵 Tiếng Mõ Gỗ</option>
+          <option value="ceremony" ${tr.isDefaultFor === 'ceremony' ? 'selected' : ''}>🪷 Nghi Lễ & Hoa Đăng</option>
+        </select>
+        <button type="button" class="btn-delete-track" data-track-id="${tr.id}" style="color:var(--danger); border-color:var(--danger); font-size:11px; padding:3px 8px;">🗑️ Xóa tệp</button>
+      </div>
+    `;
+    container.appendChild(card);
+  }
+
+  container.querySelectorAll<HTMLSelectElement>('.sel-track-default').forEach((sel) => {
+    sel.onchange = async () => {
+      const trackId = sel.getAttribute('data-track-id');
+      const isDefaultFor = sel.value || null;
+      try {
+        await callAdminApi('/api/admin/audio/tracks/update', { id: trackId, isDefaultFor });
+        showToast('Đã cập nhật gán âm thanh mặc định');
+        void loadAudioTracks();
+      } catch (e: any) {
+        showToast(`Lỗi: ${e.message}`);
+      }
+    };
+  });
+
+  container.querySelectorAll<HTMLButtonElement>('.btn-delete-track').forEach((btn) => {
+    btn.onclick = async () => {
+      const trackId = btn.getAttribute('data-track-id');
+      if (!confirm('Bạn có chắc muốn xóa tệp âm thanh này khỏi thư viện?')) return;
+      try {
+        await callAdminApi('/api/admin/audio/tracks/delete', { id: trackId });
+        showToast('Đã xóa tệp âm thanh thành công');
+        void loadAudioTracks();
+      } catch (e: any) {
+        showToast(`Lỗi: ${e.message}`);
+      }
+    };
+  });
+}
+
+document.querySelectorAll<HTMLButtonElement>('[data-cat-filter]').forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll('[data-cat-filter]').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentCategoryFilter = btn.getAttribute('data-cat-filter') || 'all';
+    void loadAudioTracks();
+  };
+});
+
+// 3. Audio File Upload
+const dropzone = document.getElementById('audioDropzone');
+const inpFileInput = document.getElementById('inpAudioFileInput') as HTMLInputElement | null;
+const btnSelectFile = document.getElementById('btnSelectAudioFile');
+const btnSubmitUpload = document.getElementById('btnSubmitAudioUpload');
+const inpUploadName = document.getElementById('inpUploadAudioName') as HTMLInputElement | null;
+const selUploadCat = document.getElementById('selUploadAudioCategory') as HTMLSelectElement | null;
+const uploadStatusText = document.getElementById('uploadStatusText');
+
+let selectedUploadFile: File | null = null;
+
+if (btnSelectFile && inpFileInput) {
+  btnSelectFile.onclick = () => inpFileInput.click();
+  inpFileInput.onchange = () => {
+    if (inpFileInput.files && inpFileInput.files[0]) {
+      selectedUploadFile = inpFileInput.files[0];
+      if (inpUploadName && !inpUploadName.value) {
+        inpUploadName.value = selectedUploadFile.name.replace(/\.[^/.]+$/, '');
+      }
+      if (uploadStatusText) {
+        uploadStatusText.textContent = `Đã chọn: ${selectedUploadFile.name} (${(selectedUploadFile.size / (1024 * 1024)).toFixed(1)} MB)`;
+        uploadStatusText.style.color = 'var(--gold-bright)';
+      }
+    }
+  };
+}
+
+if (dropzone) {
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('dragover');
+  });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
+      selectedUploadFile = e.dataTransfer.files[0];
+      if (inpUploadName && !inpUploadName.value) {
+        inpUploadName.value = selectedUploadFile.name.replace(/\.[^/.]+$/, '');
+      }
+      if (uploadStatusText) {
+        uploadStatusText.textContent = `Đã chọn: ${selectedUploadFile.name} (${(selectedUploadFile.size / (1024 * 1024)).toFixed(1)} MB)`;
+        uploadStatusText.style.color = 'var(--gold-bright)';
+      }
+    }
+  });
+}
+
+if (btnSubmitUpload) {
+  btnSubmitUpload.onclick = async () => {
+    if (!selectedUploadFile) {
+      showToast('Vui lòng chọn một tệp âm thanh (MP3, WAV, OGG, M4A)');
+      return;
+    }
+    if (uploadStatusText) uploadStatusText.textContent = 'Đang tải tệp lên máy chủ...';
+    try {
+      const res = await fetch('/api/admin/audio/upload', {
+        method: 'POST',
+        headers: {
+          'X-Admin-Token': adminToken,
+          'X-Audio-Name': encodeURIComponent((inpUploadName?.value || selectedUploadFile.name).trim()),
+          'X-Audio-Category': selUploadCat?.value || 'meditation',
+          'X-File-Name': encodeURIComponent(selectedUploadFile.name),
+          'Content-Type': selectedUploadFile.type || 'audio/mpeg'
+        },
+        body: selectedUploadFile
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Lỗi tải lên');
+
+      showToast(`Đã tải lên tệp: ${data.track?.name || 'Thành công'}`);
+      if (uploadStatusText) {
+        uploadStatusText.textContent = '✓ Tải lên hoàn tất và đã lưu vào thư viện dữ liệu!';
+        uploadStatusText.style.color = 'var(--jade)';
+      }
+      selectedUploadFile = null;
+      if (inpUploadName) inpUploadName.value = '';
+      void loadAudioTracks();
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+      if (uploadStatusText) {
+        uploadStatusText.textContent = `Lỗi tải lên: ${e.message}`;
+        uploadStatusText.style.color = 'var(--danger)';
+      }
+    }
+  };
+}
+
+// 4. Master TTS Toggle & Preview Sandbox
+const btnToggleMasterTts = document.getElementById('btnToggleMasterTts');
+if (btnToggleMasterTts) {
+  btnToggleMasterTts.onclick = async () => {
+    if (!latestSnapshot) return;
+    const nextState = !latestSnapshot.settings.ttsEnabled;
+    try {
+      const res = await callAdminApi('/api/admin/settings', { ttsEnabled: nextState });
+      renderSnapshot(res.snapshot);
+      btnToggleMasterTts.textContent = nextState ? '🎙️ Giọng Đọc: ĐANG BẬT' : '🔇 ĐÃ TẮT GIỌNG ĐỌC';
+      btnToggleMasterTts.className = nextState ? 'gold' : '';
+      showToast(nextState ? 'Đã bật giọng đọc TTS' : 'Đã tắt hoàn toàn giọng đọc TTS');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  };
+}
+
+const btnTestTtsPreview = document.getElementById('btnTestTtsPreview');
+const txtTtsPreview = document.getElementById('txtTtsPreview') as HTMLInputElement | null;
+const audioTtsPlayer = document.getElementById('audioTtsPlayer') as HTMLAudioElement | null;
+if (btnTestTtsPreview) {
+  btnTestTtsPreview.onclick = async () => {
+    try {
+      btnTestTtsPreview.textContent = '⏳ Đang tổng hợp...';
+      const text = txtTtsPreview?.value || 'Nam mô A Di Đà Phật';
+      const selVoice = (document.getElementById('selTtsVoice') as HTMLSelectElement).value;
+      const rate = Number((document.getElementById('rngTtsRate') as HTMLInputElement).value);
+      const pitch = Number((document.getElementById('rngTtsPitch') as HTMLInputElement).value);
+      const res = await callAdminApi('/api/admin/audio/preview-tts', {
+        text,
+        voice: selVoice,
+        ratePercent: rate,
+        pitchHz: pitch
+      });
+      btnTestTtsPreview.textContent = '🔊 Nghe Thử';
+      if (res.audioUrl && audioTtsPlayer) {
+        audioTtsPlayer.style.display = 'block';
+        audioTtsPlayer.src = res.audioUrl;
+        await audioTtsPlayer.play();
+        showToast('Đang phát thử nghiệm giọng đọc');
+      } else {
+        showToast('Không tạo được file âm thanh thử nghiệm');
+      }
+    } catch (e: any) {
+      btnTestTtsPreview.textContent = '🔊 Nghe Thử';
+      showToast(`Lỗi TTS: ${e.message}`);
+    }
+  };
+}
+
+const rngTtsRateEl = document.getElementById('rngTtsRate') as HTMLInputElement | null;
+if (rngTtsRateEl) {
+  rngTtsRateEl.oninput = () => {
+    const el = document.getElementById('lblTtsRate');
+    if (el) el.textContent = `${rngTtsRateEl.value}% (Trang nghiêm)`;
+  };
+}
+
+const rngTtsPitchEl = document.getElementById('rngTtsPitch') as HTMLInputElement | null;
+if (rngTtsPitchEl) {
+  rngTtsPitchEl.oninput = () => {
+    const el = document.getElementById('lblTtsPitch');
+    if (el) el.textContent = `${rngTtsPitchEl.value}Hz (Ấm trầm)`;
+  };
+}
+
+const btnSaveVoiceSettings = document.getElementById('btnSaveVoiceSettings');
+if (btnSaveVoiceSettings) {
+  btnSaveVoiceSettings.onclick = async () => {
+    try {
+      const res = await callAdminApi('/api/admin/settings', {
+        ttsVoice: (document.getElementById('selTtsVoice') as HTMLSelectElement).value,
+        ttsRatePercent: Number((document.getElementById('rngTtsRate') as HTMLInputElement).value),
+        ttsPitchHz: Number((document.getElementById('rngTtsPitch') as HTMLInputElement).value),
+        ttsMinGiftDiamonds: Number((document.getElementById('inpTtsMinDiamonds') as HTMLInputElement).value),
+        ttsReadFreeComments: (document.getElementById('chkReadFreeComments') as HTMLInputElement).checked,
+        ttsReadPrayers: (document.getElementById('chkReadPrayers') as HTMLInputElement).checked,
+        ttsReadFortunes: (document.getElementById('chkReadFortunes') as HTMLInputElement).checked,
+        moderationEnabled: (document.getElementById('chkModerationStrict') as HTMLInputElement).checked
+      });
+      renderSnapshot(res.snapshot);
+      showToast('Đã lưu cấu hình Giọng đọc & Kiểm duyệt');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  };
+}
+
+// 5. Visual Audio Mixer Faders & Ducking
+const faderMaster = document.getElementById('faderMaster') as HTMLInputElement | null;
+const faderBgm = document.getElementById('faderBgm') as HTMLInputElement | null;
+const faderBell = document.getElementById('faderBell') as HTMLInputElement | null;
+const faderMo = document.getElementById('faderMo') as HTMLInputElement | null;
+const faderCeremony = document.getElementById('faderCeremony') as HTMLInputElement | null;
+const faderTts = document.getElementById('faderTts') as HTMLInputElement | null;
+
+const valMixMaster = document.getElementById('valMixMaster');
+const valMixBgm = document.getElementById('valMixBgm');
+const valMixBell = document.getElementById('valMixBell');
+const valMixMo = document.getElementById('valMixMo');
+const valMixCeremony = document.getElementById('valMixCeremony');
+const valMixTts = document.getElementById('valMixTts');
+
+function bindFader(fader: HTMLInputElement | null, valEl: HTMLElement | null) {
+  if (!fader || !valEl) return;
+  fader.oninput = () => {
+    valEl.textContent = `${Math.round(Number(fader.value) * 100)}%`;
+  };
+}
+bindFader(faderMaster, valMixMaster);
+bindFader(faderBgm, valMixBgm);
+bindFader(faderBell, valMixBell);
+bindFader(faderMo, valMixMo);
+bindFader(faderCeremony, valMixCeremony);
+bindFader(faderTts, valMixTts);
+
+document.querySelectorAll<HTMLButtonElement>('.btn-mute-channel').forEach((btn) => {
+  btn.onclick = () => {
+    const isMuted = btn.classList.toggle('muted');
+    btn.textContent = isMuted ? 'Bật lại' : 'Tắt Mute';
+    const channel = btn.getAttribute('data-channel');
+    if (channel === 'master' && faderMaster) {
+      faderMaster.value = isMuted ? '0' : '0.9';
+      if (valMixMaster) valMixMaster.textContent = isMuted ? '0%' : '90%';
+    } else if (channel === 'bgm' && faderBgm) {
+      faderBgm.value = isMuted ? '0' : '0.55';
+      if (valMixBgm) valMixBgm.textContent = isMuted ? '0%' : '55%';
+    } else if (channel === 'bell' && faderBell) {
+      faderBell.value = isMuted ? '0' : '0.9';
+      if (valMixBell) valMixBell.textContent = isMuted ? '0%' : '90%';
+    } else if (channel === 'mo' && faderMo) {
+      faderMo.value = isMuted ? '0' : '0.85';
+      if (valMixMo) valMixMo.textContent = isMuted ? '0%' : '85%';
+    } else if (channel === 'ceremony' && faderCeremony) {
+      faderCeremony.value = isMuted ? '0' : '0.95';
+      if (valMixCeremony) valMixCeremony.textContent = isMuted ? '0%' : '95%';
+    } else if (channel === 'tts' && faderTts) {
+      faderTts.value = isMuted ? '0' : '0.95';
+      if (valMixTts) valMixTts.textContent = isMuted ? '0%' : '95%';
+    }
+  };
+});
+
+const rngDuckingPercentEl = document.getElementById('rngDuckingPercent') as HTMLInputElement | null;
+if (rngDuckingPercentEl) {
+  rngDuckingPercentEl.oninput = () => {
+    const el = document.getElementById('lblDuckingPercent');
+    if (el) el.textContent = `${rngDuckingPercentEl.value}%`;
+  };
+}
+
+const btnSaveMixerSettings = document.getElementById('btnSaveMixerSettings');
+if (btnSaveMixerSettings) {
+  btnSaveMixerSettings.onclick = async () => {
+    try {
+      const res = await callAdminApi('/api/admin/settings', {
+        audioMasterVolume: faderMaster ? Number(faderMaster.value) : 0.9,
+        audioMusicVolume: faderBgm ? Number(faderBgm.value) : 0.55,
+        audioBellVolume: faderBell ? Number(faderBell.value) : 0.9,
+        audioWoodenFishVolume: faderMo ? Number(faderMo.value) : 0.85,
+        audioCeremonyVolume: faderCeremony ? Number(faderCeremony.value) : 0.95,
+        audioTtsVolume: faderTts ? Number(faderTts.value) : 0.95,
+        audioDuckingEnabled: (document.getElementById('chkAudioDucking') as HTMLInputElement).checked,
+        audioDuckingPercent: Number((document.getElementById('rngDuckingPercent') as HTMLInputElement).value)
+      });
+      renderSnapshot(res.snapshot);
+      showToast('Đã lưu cấu hình Bàn Trộn Âm Thanh & Ducking');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  };
+}
+
+const btnMuteAllAudio = document.getElementById('btnMuteAllAudio');
+let preMuteMaster = '0.9';
+if (btnMuteAllAudio) {
+  btnMuteAllAudio.onclick = async () => {
+    if (!faderMaster) return;
+    const isMuted = faderMaster.value === '0';
+    const targetVal = isMuted ? preMuteMaster : '0';
+    if (!isMuted) preMuteMaster = faderMaster.value;
+    faderMaster.value = targetVal;
+    if (valMixMaster) valMixMaster.textContent = `${Math.round(Number(targetVal) * 100)}%`;
+    btnMuteAllAudio.textContent = isMuted ? '🔇 Mute Tất Cả' : '🔊 Bật Âm Lại';
+    btnMuteAllAudio.classList.toggle('gold', isMuted);
+    try {
+      const res = await callAdminApi('/api/admin/settings', {
+        audioMasterVolume: Number(targetVal)
+      });
+      renderSnapshot(res.snapshot);
+      showToast(isMuted ? 'Đã bật lại âm thanh Master' : 'Đã MUTE toàn bộ âm thanh Chánh Điện');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  };
+}
+
+// 6. Scheduler Save
+const inpMoBpmEl = document.getElementById('inpMoBpm') as HTMLInputElement | null;
+if (inpMoBpmEl) {
+  inpMoBpmEl.oninput = () => {
+    const el = document.getElementById('lblMoBpm');
+    if (el) el.textContent = `${inpMoBpmEl.value} BPM`;
+  };
+}
+
+const btnSaveSchedulerSettings = document.getElementById('btnSaveSchedulerSettings');
+if (btnSaveSchedulerSettings) {
+  btnSaveSchedulerSettings.onclick = async () => {
+    try {
+      const res = await callAdminApi('/api/admin/settings', {
+        autoChantEnabled: (document.getElementById('chkAutoChant') as HTMLInputElement).checked,
+        autoChantIntervalMin: Number((document.getElementById('inpAutoChantInterval') as HTMLInputElement).value),
+        woodenFishRhythmEnabled: (document.getElementById('chkWoodenFishRhythm') as HTMLInputElement).checked,
+        woodenFishBpm: Number((document.getElementById('inpMoBpm') as HTMLInputElement).value),
+        idleSereneChimes: (document.getElementById('chkIdleSereneChimes') as HTMLInputElement).checked
+      });
+      renderSnapshot(res.snapshot);
+      showToast('Đã lưu lịch trình tự động tụng kinh & chuông mõ');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  };
+}
 
 document.getElementById('btnResetSession')!.onclick = async () => {
   const res = await callAdminApi('/api/admin/session/reset');
@@ -555,3 +1060,4 @@ function connectAdminWs(): void {
 }
 
 connectAdminWs();
+void loadAudioTracks();

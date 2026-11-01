@@ -303,4 +303,44 @@ export class TikTokLiveConnectorAdapter implements ITikTokConnector {
       lastError: ''
     });
   }
+
+  public async verifyRoom(
+    uniqueId: string
+  ): Promise<{ verified: boolean; uniqueId: string; roomId?: string; message?: string }> {
+    const cleanId = normalizeTikTokUniqueId(uniqueId);
+    if (!cleanId) {
+      return { verified: false, uniqueId: '', message: 'Tên tài khoản TikTok không hợp lệ' };
+    }
+
+    try {
+      const lib = await import('tiktok-live-connector');
+      const { TikTokLiveConnection } = lib;
+      const testConn = new TikTokLiveConnection(cleanId, {
+        processInitialData: false,
+        fetchRoomInfoOnConnect: true,
+        ...(process.env.EULER_SIGN_API_KEY ? { signApiKey: process.env.EULER_SIGN_API_KEY } : {})
+      });
+      const isLive = await testConn.fetchIsLive();
+      if (!isLive) {
+        return {
+          verified: false,
+          uniqueId: cleanId,
+          message: 'Kênh hiện không phát trực tiếp (offline)'
+        };
+      }
+      const roomId = await testConn.fetchRoomId().catch(() => testConn.roomId);
+      return {
+        verified: true,
+        uniqueId: cleanId,
+        roomId: roomId ? String(roomId) : undefined,
+        message: 'Kênh đang phát trực tiếp!'
+      };
+    } catch (err: any) {
+      return {
+        verified: false,
+        uniqueId: cleanId,
+        message: err?.message || 'Kênh hiện không online hoặc không tìm thấy phòng LIVE'
+      };
+    }
+  }
 }

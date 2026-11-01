@@ -303,6 +303,141 @@
     #toastBar.show {
       opacity: 1;
     }
+
+    /* Audio & Ritual Control Center Styles */
+    .audio-nav-tabs {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1.5px solid var(--border);
+      padding-bottom: 8px;
+      margin-bottom: 14px;
+      overflow-x: auto;
+    }
+
+    .audio-tab-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(229, 184, 91, 0.2);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+
+    .audio-tab-btn:hover {
+      background: rgba(229, 184, 91, 0.15);
+      color: var(--gold-bright);
+    }
+
+    .audio-tab-btn.active {
+      background: linear-gradient(180deg, #b8321e, #78190c);
+      color: var(--gold-bright);
+      border-color: var(--gold);
+    }
+
+    .audio-tab-panel {
+      display: none;
+    }
+
+    .audio-tab-panel.active {
+      display: block;
+    }
+
+    .audio-upload-dropzone {
+      border: 2px dashed rgba(229, 184, 91, 0.45);
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.25);
+      padding: 16px;
+      text-align: center;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 14px;
+    }
+
+    .audio-upload-dropzone.dragover {
+      border-color: var(--gold-bright);
+      background: rgba(229, 184, 91, 0.1);
+    }
+
+    .audio-track-card {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(229, 184, 91, 0.22);
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .audio-track-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .audio-track-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--gold-bright);
+    }
+
+    .audio-track-meta {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .audio-category-pill {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: rgba(229, 184, 91, 0.15);
+      border: 1px solid rgba(229, 184, 91, 0.35);
+      color: var(--gold);
+    }
+
+    .audio-fader-card {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(229, 184, 91, 0.22);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .audio-fader-card strong {
+      font-size: 13px;
+      color: var(--gold-bright);
+    }
+
+    .btn-mute-channel {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .btn-mute-channel.muted {
+      background: rgba(229, 115, 115, 0.25);
+      border-color: var(--danger);
+      color: var(--danger);
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -330,7 +465,10 @@
         <span id="previewSeatedCount" style="font-size:12px; color:var(--muted);">12/24 vị</span>
       </div>
       <div class="preview-frame-wrap">
-        <iframe src="/overlay?obs=1" title="Live 9:16 Overlay Preview"></iframe>
+        <iframe src="/overlay?obs=1&preview=1&muted=1" title="Live 9:16 Overlay Preview (Đã Tắt Tiếng)"></iframe>
+      </div>
+      <div style="font-size:11px; color:var(--jade); text-align:center; margin-top:2px;">
+        🔇 Âm thanh Preview tắt tự động để tránh dội tiếng lên OBS
       </div>
       <div class="btn-row" style="justify-content:center; width:100%;">
         <button type="button" id="btnCopyObsUrl">📋 Copy URL OBS Chuẩn</button>
@@ -513,44 +651,342 @@
         </div>
       </section>
 
-      <!-- 4. Sound Mixer & Vietnamese TTS Engine -->
-      <section class="panel-card">
-        <h2><span>4. Bàn Trộn Âm Thanh (Sound Mixer) &amp; Giọng Đọc TTS</span></h2>
-        <div class="form-row">
-          <div class="field">
-            <label for="rngMasterVol">Âm lượng Tổng (Master): <span id="lblMasterVol">90%</span></label>
-            <input type="range" id="rngMasterVol" min="0" max="1" step="0.05" value="0.9" />
+      <!-- 4. Audio & Ritual Control Center -->
+      <section class="panel-card full-span" id="audioRitualControlCenter">
+        <h2>
+          <span>4. Trung Tâm Âm Thanh &amp; Nghi Lễ (Audio &amp; Ritual Control Center)</span>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button type="button" class="gold" id="btnToggleMasterTts">🎙️ Giọng Đọc: ĐANG BẬT</button>
+            <button type="button" id="btnMuteAllAudio">🔇 Mute Tất Cả</button>
           </div>
-          <div class="field">
-            <label for="rngMusicVol">Nhạc Thiền Ngũ Cung: <span id="lblMusicVol">55%</span></label>
-            <input type="range" id="rngMusicVol" min="0" max="1" step="0.05" value="0.55" />
+        </h2>
+
+        <!-- Navigation Tabs -->
+        <nav class="audio-nav-tabs">
+          <button type="button" class="audio-tab-btn active" data-tab="tabSoundLibrary">📁 Thư Viện Âm Thanh</button>
+          <button type="button" class="audio-tab-btn" data-tab="tabVoiceManager">🎙️ Quản Lý Giọng Đọc (TTS)</button>
+          <button type="button" class="audio-tab-btn" data-tab="tabVisualMixer">🎛️ Bàn Trộn Âm Thanh &amp; Ducking</button>
+          <button type="button" class="audio-tab-btn" data-tab="tabRitualAudioMapping">📜 Điều Phối Nghi Lễ</button>
+          <button type="button" class="audio-tab-btn" data-tab="tabAudioScheduler">⏰ Lịch Trình Tự Động</button>
+        </nav>
+
+        <!-- TAB 1: THƯ VIỆN ÂM THANH -->
+        <div class="audio-tab-panel active" id="tabSoundLibrary">
+          <!-- Upload Box -->
+          <div class="audio-upload-dropzone" id="audioDropzone">
+            <div style="font-size:24px; margin-bottom:4px;">📤</div>
+            <strong style="color:var(--gold-bright); font-size:14px; display:block;">Kéo thả tệp âm thanh vào đây hoặc bấm để chọn tệp</strong>
+            <span style="font-size:12px; color:var(--muted); display:block; margin:4px 0 10px;">Hỗ trợ MP3, WAV, OGG, M4A (Tối đa 35MB). Lưu bền vững trong thư mục dữ liệu.</span>
+            
+            <div style="display:grid; grid-template-columns: 2fr 1fr 1fr auto; gap:8px; max-width:850px; margin:0 auto; text-align:left;">
+              <input type="text" id="inpUploadAudioName" placeholder="Đặt tên bản nhạc (ví dụ: Chú Đại Bi - Thầy Trí Thoát)" />
+              <select id="selUploadAudioCategory">
+                <option value="meditation">Nhạc Thiền (BGM)</option>
+                <option value="chant">Tụng Kinh</option>
+                <option value="buddha_name">Niệm Phật</option>
+                <option value="bell">Tiếng Chuông</option>
+                <option value="wooden_fish">Tiếng Mõ</option>
+                <option value="prayer">Lời Cầu Nguyện</option>
+                <option value="greeting">Lời Chào</option>
+                <option value="festival">Âm Thanh Lễ Hội</option>
+                <option value="sfx">Hiệu Ứng (SFX)</option>
+              </select>
+              <input type="file" id="inpAudioFileInput" accept=".mp3,.wav,.ogg,.m4a,audio/*" style="display:none;" />
+              <button type="button" id="btnSelectAudioFile">📂 Chọn Tệp</button>
+              <button type="button" class="gold" id="btnSubmitAudioUpload">⬆ Tải Lên</button>
+            </div>
+            <div id="uploadStatusText" style="font-size:12px; margin-top:8px; color:var(--muted);"></div>
+          </div>
+
+          <!-- Category Filter Bar -->
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="audio-tab-btn active" data-cat-filter="all">Tất cả</button>
+              <button type="button" class="audio-tab-btn" data-cat-filter="meditation">Nhạc Thiền</button>
+              <button type="button" class="audio-tab-btn" data-cat-filter="chant">Tụng Kinh</button>
+              <button type="button" class="audio-tab-btn" data-cat-filter="buddha_name">Niệm Phật</button>
+              <button type="button" class="audio-tab-btn" data-cat-filter="bell">Chuông</button>
+              <button type="button" class="audio-tab-btn" data-cat-filter="wooden_fish">Mõ</button>
+              <button type="button" class="audio-tab-btn" data-cat-filter="sfx">Hiệu Ứng</button>
+            </div>
+            <span id="audioTrackCountBadge" style="font-size:12px; color:var(--muted);">0 tệp âm thanh</span>
+          </div>
+
+          <!-- Audio Track Cards List -->
+          <div id="audioTrackListContainer" style="max-height: 280px; overflow-y:auto; padding-right:4px;">
+            <div style="color:var(--muted); font-size:13px; text-align:center; padding:18px;">Chưa có tệp âm thanh nào được tải lên. Hãy kéo thả tệp MP3/WAV/OGG ở trên.</div>
+          </div>
+
+          <!-- Playlists Section -->
+          <div style="margin-top:16px; padding:12px; border-radius:10px; background:rgba(0,0,0,0.3); border:1px solid rgba(229,184,91,0.2);">
+            <strong style="color:var(--gold-bright); font-size:13px; display:block; margin-bottom:8px;">Danh Sách Phát Nhạc Nền (Playlists):</strong>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <input type="text" id="inpNewPlaylistName" placeholder="Tên danh sách (ví dụ: Tụng Kinh Buổi Sáng)" style="max-width:260px;" />
+              <select id="selPlaylistMode" style="max-width:180px;">
+                <option value="loop_all">Lặp lại toàn bộ</option>
+                <option value="loop_one">Lặp lại 1 bài</option>
+                <option value="shuffle">Phát ngẫu nhiên</option>
+                <option value="sequence">Phát tuần tự 1 lượt</option>
+              </select>
+              <button type="button" class="gold" id="btnCreatePlaylist">➕ Tạo Playlist</button>
+            </div>
+            <div id="playlistListContainer" style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+              <div style="color:var(--muted); font-size:12px;">Chưa có playlist tùy chỉnh. Nhạc thiền ngũ cung tự động mặc định đang phát.</div>
+            </div>
           </div>
         </div>
-        <div class="form-row">
-          <div class="field">
-            <label for="rngSfxVol">Pháp Khí (Chuông / Mõ): <span id="lblSfxVol">85%</span></label>
-            <input type="range" id="rngSfxVol" min="0" max="1" step="0.05" value="0.85" />
+
+        <!-- TAB 2: QUẢN LÝ GIỌNG ĐỌC (TTS) -->
+        <div class="audio-tab-panel" id="tabVoiceManager">
+          <div class="form-row">
+            <div class="field">
+              <label for="selTtsVoice">Giọng Đọc Tiếng Việt (Microsoft Neural)</label>
+              <select id="selTtsVoice">
+                <option value="vi-VN-HoaiMyNeural">Nữ · Hoài My (Ấm áp, truyền cảm, an tịnh)</option>
+                <option value="vi-VN-NamMinhNeural">Nam · Nam Minh (Trầm tĩnh, trang nghiêm, từ bi)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="rngTtsRate">Tốc Độ Đọc: <span id="lblTtsRate">-12% (Chậm rãi, trang nghiêm)</span></label>
+              <input type="range" id="rngTtsRate" min="-40" max="30" step="2" value="-12" />
+            </div>
           </div>
-          <div class="field">
-            <label for="rngTtsVol">Giọng Đọc Lời Nguyện (TTS): <span id="lblTtsVol">95%</span></label>
-            <input type="range" id="rngTtsVol" min="0" max="1" step="0.05" value="0.95" />
+
+          <div class="form-row">
+            <div class="field">
+              <label for="rngTtsPitch">Cao Độ (Pitch): <span id="lblTtsPitch">-6Hz (Ấm trầm)</span></label>
+              <input type="range" id="rngTtsPitch" min="-30" max="30" step="2" value="-6" />
+            </div>
+            <div class="field">
+              <label for="rngTtsMinDiamonds">Mức Quà Tối Thiểu Để Đọc Tên: <span id="lblMinDiamonds">1 xu</span></label>
+              <input type="number" id="inpTtsMinDiamonds" min="1" max="10000" value="1" />
+            </div>
+          </div>
+
+          <div style="margin: 12px 0; padding: 12px; border-radius: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(229,184,91,0.2);">
+            <strong style="color:var(--gold-bright); font-size:13px; display:block; margin-bottom:8px;">Kiểm Duyệt &amp; Lựa Chọn Nội Dung Đọc Trực Tiếp:</strong>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size:13px;">
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="chkReadFreeComments" /> Đọc Bình Luận Tự Do (Nếu tắt: Chỉ đọc quà tặng &amp; lời nguyện)
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="chkReadPrayers" checked /> Đọc Lời Nguyện Thả Hoa Đăng
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="chkReadFortunes" checked /> Đọc Tóm Tắt Quẻ Xăm Văn Hóa
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="chkModerationStrict" checked /> Lọc Nghiêm Ngặt Từ Nhạy Cảm &amp; Số Điện Thoại
+              </label>
+            </div>
+            <div style="font-size:11px; color:var(--jade); margin-top:8px;">
+              🛡️ Hệ thống tự động chặn tiếng Anh: Nếu dịch vụ TTS gián đoạn, hệ thống chỉ phát tiếng chuông thanh tịnh, tuyệt đối không phát âm tiếng Anh lỗi.
+            </div>
+          </div>
+
+          <!-- TTS Sandbox Test -->
+          <div style="margin-top:12px; padding:12px; border-radius:10px; background:rgba(0,0,0,0.35); border:1px solid rgba(229,184,91,0.25);">
+            <strong style="color:var(--gold-bright); font-size:13px; display:block; margin-bottom:6px;">🔊 Thử Nghiệm &amp; Nghe Trước Giọng Đọc (Sandbox):</strong>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="txtTtsPreview" value="Nam mô A Di Đà Phật. Con thành tâm cầu nguyện cho gia đạo luôn bình an, vạn sự cát tường." style="flex:1;" />
+              <button type="button" class="gold" id="btnTestTtsPreview">🔊 Nghe Thử</button>
+            </div>
+            <audio id="audioTtsPlayer" controls style="width:100%; height:34px; margin-top:8px; display:none;"></audio>
+          </div>
+
+          <div class="btn-row" style="margin-top:12px;">
+            <button type="button" class="primary" id="btnSaveVoiceSettings">💾 Lưu Cấu Hình Giọng Đọc</button>
           </div>
         </div>
-        <div class="form-row">
-          <div class="field">
-            <label for="selTtsVoice">Giọng Đọc Tiếng Việt</label>
-            <select id="selTtsVoice">
-              <option value="vi-VN-HoaiMyNeural">Nữ · Hoài My (Ấm áp, truyền cảm)</option>
-              <option value="vi-VN-NamMinhNeural">Nam · Nam Minh (Trầm tĩnh, trang nghiêm)</option>
-            </select>
+
+        <!-- TAB 3: BÀN TRỘN ÂM THANH TRỰC QUAN & DUCKING -->
+        <div class="audio-tab-panel" id="tabVisualMixer">
+          <div style="display:grid; grid-template-columns: repeat(6, 1fr); gap:10px; margin-bottom:14px;">
+            <!-- Fader 1: Master -->
+            <div class="audio-fader-card">
+              <strong>Master Tổng</strong>
+              <div style="font-size:18px; color:var(--gold-bright); font-weight:700;" id="valMixMaster">90%</div>
+              <input type="range" id="faderMaster" min="0" max="1" step="0.05" value="0.9" style="accent-color:var(--gold);" />
+              <button type="button" class="btn-mute-channel" data-channel="master">Tắt Mute</button>
+            </div>
+
+            <!-- Fader 2: BGM -->
+            <div class="audio-fader-card">
+              <strong>Nhạc Nền (BGM)</strong>
+              <div style="font-size:18px; color:var(--gold-bright); font-weight:700;" id="valMixBgm">55%</div>
+              <input type="range" id="faderBgm" min="0" max="1" step="0.05" value="0.55" style="accent-color:var(--gold);" />
+              <button type="button" class="btn-mute-channel" data-channel="bgm">Tắt Mute</button>
+            </div>
+
+            <!-- Fader 3: Chuông -->
+            <div class="audio-fader-card">
+              <strong>Tiếng Chuông</strong>
+              <div style="font-size:18px; color:var(--gold-bright); font-weight:700;" id="valMixBell">90%</div>
+              <input type="range" id="faderBell" min="0" max="1" step="0.05" value="0.9" style="accent-color:var(--gold);" />
+              <button type="button" class="btn-mute-channel" data-channel="bell">Tắt Mute</button>
+            </div>
+
+            <!-- Fader 4: Mõ -->
+            <div class="audio-fader-card">
+              <strong>Mõ Gỗ</strong>
+              <div style="font-size:18px; color:var(--gold-bright); font-weight:700;" id="valMixMo">85%</div>
+              <input type="range" id="faderMo" min="0" max="1" step="0.05" value="0.85" style="accent-color:var(--gold);" />
+              <button type="button" class="btn-mute-channel" data-channel="mo">Tắt Mute</button>
+            </div>
+
+            <!-- Fader 5: Nghi Lễ -->
+            <div class="audio-fader-card">
+              <strong>Nghi Lễ (SFX)</strong>
+              <div style="font-size:18px; color:var(--gold-bright); font-weight:700;" id="valMixCeremony">95%</div>
+              <input type="range" id="faderCeremony" min="0" max="1" step="0.05" value="0.95" style="accent-color:var(--gold);" />
+              <button type="button" class="btn-mute-channel" data-channel="ceremony">Tắt Mute</button>
+            </div>
+
+            <!-- Fader 6: TTS -->
+            <div class="audio-fader-card">
+              <strong>Giọng Đọc TTS</strong>
+              <div style="font-size:18px; color:var(--gold-bright); font-weight:700;" id="valMixTts">95%</div>
+              <input type="range" id="faderTts" min="0" max="1" step="0.05" value="0.95" style="accent-color:var(--gold);" />
+              <button type="button" class="btn-mute-channel" data-channel="tts">Tắt Mute</button>
+            </div>
           </div>
-          <div class="field">
-            <label for="inpMoBpm">Nhịp Mõ Tụng Kinh (BPM)</label>
-            <input type="number" id="inpMoBpm" min="20" max="120" value="52" />
+
+          <!-- Dynamic Ducking Settings -->
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div style="padding:12px; border-radius:10px; background:rgba(0,0,0,0.3); border:1px solid rgba(229,184,91,0.2);">
+              <strong style="color:var(--gold-bright); font-size:13px; display:block; margin-bottom:6px;">Tự Động Giảm Nhạc Nền Khi Có Giọng Đọc (Audio Ducking):</strong>
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom:8px; font-size:13px;">
+                <input type="checkbox" id="chkAudioDucking" checked /> Bật Auto-Ducking (Hạ êm dịu, không giật tiếng)
+              </label>
+              <div class="field">
+                <label for="rngDuckingPercent">Mức Hạ Nhạc Nền: <span id="lblDuckingPercent">70%</span></label>
+                <input type="range" id="rngDuckingPercent" min="20" max="95" step="5" value="70" />
+              </div>
+            </div>
+
+            <div style="padding:12px; border-radius:10px; background:rgba(0,0,0,0.3); border:1px solid rgba(229,184,91,0.2); display:flex; flex-direction:column; justify-content:center;">
+              <strong style="color:var(--gold-bright); font-size:13px; display:block; margin-bottom:4px;">🛡️ Master Dynamics Limiter (Chống Rè &amp; Chống Vỡ Tiếng):</strong>
+              <span style="font-size:12px; color:var(--text); display:block; margin-bottom:6px;">Ngưỡng nén -2.0dBFS, tỷ lệ 12:1. Đảm bảo âm thanh live stream luôn trong trẻo khi nhiều hiệu ứng diễn ra cùng lúc.</span>
+              <span style="font-size:11px; color:var(--jade); font-weight:700;">● BẢO VỆ CHỦ ĐỘNG ĐANG BẬT</span>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button type="button" class="gold" id="btnSaveMixerSettings">💾 Lưu Cấu Hình Bàn Trộn</button>
           </div>
         </div>
-        <div class="btn-row">
-          <button type="button" class="gold" id="btnSaveAudioSettings">💾 Lưu Cấu Hình Âm Thanh</button>
+
+        <!-- TAB 4: ĐIỀU PHỐI NGHI LỄ & ÂM THANH -->
+        <div class="audio-tab-panel" id="tabRitualAudioMapping">
+          <table class="rules-table">
+            <thead>
+              <tr>
+                <th>Sự Kiện Live</th>
+                <th>Pháp Khí / Âm Thanh Kích Hoạt</th>
+                <th>Đọc TTS Lời Nguyện</th>
+                <th>Ưu Tiên</th>
+                <th>Ducking Nhạc Nền</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Bình luận Dâng Hương / Lạy Phật</strong></td>
+                <td>Chuông Bát Nhã + 3 Hồi Mõ</td>
+                <td><span style="color:var(--jade);">✓ Đọc tên &amp; ước nguyện</span></td>
+                <td>70</td>
+                <td>Giảm 70% trong lúc đọc</td>
+              </tr>
+              <tr>
+                <td><strong>Bình luận Thả Hoa Đăng</strong></td>
+                <td>Chuông Bát Nhã Ngân Vang</td>
+                <td><span style="color:var(--jade);">✓ Đọc lời cầu nguyện</span></td>
+                <td>75</td>
+                <td>Giảm 70% trong lúc đọc</td>
+              </tr>
+              <tr>
+                <td><strong>Bình luận Dâng Hoa Sen Tươi</strong></td>
+                <td>Khánh Đồng Thanh Khiết</td>
+                <td><span style="color:var(--jade);">✓ Cảm tạ dâng hoa</span></td>
+                <td>74</td>
+                <td>Giảm 70% trong lúc đọc</td>
+              </tr>
+              <tr>
+                <td><strong>Xin Xăm Đầu Xuân</strong></td>
+                <td>Lắc Ống Xăm Tre (4 nhịp)</td>
+                <td><span style="color:var(--jade);">✓ Đọc tóm tắt quẻ</span></td>
+                <td>80</td>
+                <td>Giảm 70% trong lúc đọc</td>
+              </tr>
+              <tr>
+                <td><strong>Thả Tim (❤️ Like Batch)</strong></td>
+                <td>Tiếng Mõ Gỗ Tịnh Tiến (0.95 - 1.05x)</td>
+                <td><span style="color:var(--muted);">✕ Không đọc</span></td>
+                <td>40</td>
+                <td>Không ducking</td>
+              </tr>
+              <tr>
+                <td><strong>Phật Tử Follow Kênh</strong></td>
+                <td>Đại Hồng Chung Ngân Vang 4.8s</td>
+                <td><span style="color:var(--muted);">✕ Không đọc</span></td>
+                <td>60</td>
+                <td>Không ducking</td>
+              </tr>
+              <tr>
+                <td><strong>Tặng Quà Nhỏ (Dưới 50 xu)</strong></td>
+                <td>Chuông Bát Nhã + 3 Tiếng Mõ</td>
+                <td><span style="color:var(--jade);">✓ Tri ân Phật tử</span></td>
+                <td>95</td>
+                <td>Giảm 70% trong lúc đọc</td>
+              </tr>
+              <tr>
+                <td><strong>Đại Lễ Kim Liên (Trên 200 xu)</strong></td>
+                <td>Đại Hồng Chung + Rồng Lượn Hào Quang</td>
+                <td><span style="color:var(--gold-bright); font-weight:700;">★ Ưu Tiên Cao Nhất (110)</span></td>
+                <td>110</td>
+                <td>Tự động hạ nhạc nền sâu</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- TAB 5: LỊCH TRÌNH VÀ TỰ ĐỘNG HÓA -->
+        <div class="audio-tab-panel" id="tabAudioScheduler">
+          <div class="form-row">
+            <div class="field">
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="chkAutoChant" checked /> Bật Tụng Kinh Định Kỳ Tự Động
+              </label>
+              <span style="font-size:12px; color:var(--muted);">Tự động phát lời tụng niệm trang nghiêm sau mỗi khoảng thời gian nếu không có tương tác đột biến.</span>
+            </div>
+            <div class="field">
+              <label for="inpAutoChantInterval">Khoảng Thời Gian Tụng Kinh (Phút)</label>
+              <input type="number" id="inpAutoChantInterval" min="1" max="60" value="4" />
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-top:10px;">
+            <div class="field">
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="chkWoodenFishRhythm" checked /> Nhịp Mõ Tụng Kinh Tự Động
+              </label>
+              <span style="font-size:12px; color:var(--muted);">Mõ gỗ gõ đều đặn tạo nhịp điệu tĩnh tâm khi không có ai thả tim.</span>
+            </div>
+            <div class="field">
+              <label for="inpMoBpm">Tốc Độ Nhịp Mõ (BPM): <span id="lblMoBpm">52 BPM</span></label>
+              <input type="range" id="inpMoBpm" min="20" max="108" step="2" value="52" />
+            </div>
+          </div>
+
+          <div class="field" style="margin-top:10px;">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="chkIdleSereneChimes" checked /> Chuông Mõ Tĩnh Tâm Khi Vắng Tương Tác
+            </label>
+            <span style="font-size:12px; color:var(--muted);">Tự động thỉnh một tiếng chuông bát nhã êm dịu khi phòng LIVE yên lặng quá 45 giây.</span>
+          </div>
+
+          <div class="btn-row" style="margin-top:12px;">
+            <button type="button" class="gold" id="btnSaveSchedulerSettings">💾 Lưu Lịch Trình Tự Động</button>
+          </div>
         </div>
       </section>
 

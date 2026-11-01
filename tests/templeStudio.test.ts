@@ -597,4 +597,128 @@ describe('8. Vietnamese Lunar Calendar, Community Prayer Registry & Cultural Tog
     store.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  it('Audio Control Center: manages audio tracks and playlists in SQLite store', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'temple-audio-store-'));
+    const store = new SqlitePersistenceStore(tmpDir);
+
+    const testTrackFile = path.join(tmpDir, 'chu_dai_bi.mp3');
+    fs.writeFileSync(testTrackFile, Buffer.from([0xff, 0xfb, 0x90, 0x64])); // dummy MP3 header
+
+    // 1. Save track
+    store.saveAudioTrack({
+      id: 'track-1',
+      name: 'Chú Đại Bi',
+      filename: 'chu_dai_bi.mp3',
+      filepath: testTrackFile,
+      category: 'chant',
+      durationSec: 320,
+      fileSizeBytes: 4,
+      mimeType: 'audio/mpeg',
+      isDefaultFor: 'bgm',
+      createdAt: Date.now(),
+      url: '/audio-uploads/chu_dai_bi.mp3'
+    });
+
+    const tracks = store.listAudioTracks();
+    expect(tracks.length).toBe(1);
+    expect(tracks[0].name).toBe('Chú Đại Bi');
+    expect(tracks[0].isDefaultFor).toBe('bgm');
+
+    // 2. Category filter
+    const chantTracks = store.listAudioTracks('chant');
+    expect(chantTracks.length).toBe(1);
+    const bellTracks = store.listAudioTracks('bell');
+    expect(bellTracks.length).toBe(0);
+
+    // 3. Update track
+    const updated = store.updateAudioTrack('track-1', { name: 'Chú Đại Bi 21 Biến', category: 'chant' });
+    expect(updated?.name).toBe('Chú Đại Bi 21 Biến');
+
+    // 4. Playlists
+    store.savePlaylist({
+      id: 'pl-1',
+      name: 'Nhạc Thiền Ban Mai',
+      trackIds: ['track-1'],
+      mode: 'loop_all',
+      isActive: true,
+      createdAt: Date.now()
+    });
+    const playlists = store.listPlaylists();
+    expect(playlists.length).toBe(1);
+    expect(playlists[0].name).toBe('Nhạc Thiền Ban Mai');
+    expect(playlists[0].trackIds).toEqual(['track-1']);
+
+    // 5. Delete track and playlist
+    expect(store.deletePlaylist('pl-1')).toBe(true);
+    expect(store.listPlaylists().length).toBe(0);
+
+    expect(store.deleteAudioTrack('track-1')).toBe(true);
+    expect(store.listAudioTracks().length).toBe(0);
+    expect(fs.existsSync(testTrackFile)).toBe(false);
+
+    store.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('Audio Control Center API: handles binary upload, audio streaming with range 206, and verify endpoint', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'temple-audio-server-'));
+    const testStudio = await createStudioServer({
+      port: 0,
+      host: '127.0.0.1',
+      dataDir: tmpDir,
+      adminToken: 'test-audio-token',
+      synthesizeTtsEnabled: false
+    });
+    const testBaseUrl = `http://127.0.0.1:${testStudio.port}`;
+
+    try {
+      // 1. Upload audio track via POST /api/admin/audio/upload
+      const dummyAudio = Buffer.alloc(1024, 0x41);
+      const uploadRes = await fetch(`${testBaseUrl}/api/admin/audio/upload`, {
+        method: 'POST',
+        headers: {
+          'X-Admin-Token': 'test-audio-token',
+          'X-Audio-Name': encodeURIComponent('Tiếng Chuông Bát Nhã'),
+          'X-Audio-Category': 'bell',
+          'X-File-Name': encodeURIComponent('bat_nha.wav'),
+          'Content-Type': 'audio/wav'
+        },
+        body: dummyAudio
+      });
+      expect(uploadRes.status).toBe(200);
+      const uploadJson = (await uploadRes.json()) as { ok: boolean; track: any };
+      expect(uploadJson.ok).toBe(true);
+      expect(uploadJson.track.name).toBe('Tiếng Chuông Bát Nhã');
+      expect(uploadJson.track.category).toBe('bell');
+
+      // 2. Stream audio track with Range header (206 Partial Content)
+      const streamRes = await fetch(`${testBaseUrl}${uploadJson.track.url}`, {
+        headers: {
+          Range: 'bytes=0-255'
+        }
+      });
+      expect(streamRes.status).toBe(206);
+      expect(streamRes.headers.get('content-range')).toContain('bytes 0-255/1024');
+      const chunk = await streamRes.arrayBuffer();
+      expect(chunk.byteLength).toBe(256);
+
+      // 3. Test verify TikTok endpoint /api/admin/tiktok/verify
+      const verifyRes = await fetch(`${testBaseUrl}/api/admin/tiktok/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Token': 'test-audio-token'
+        },
+        body: JSON.stringify({ uniqueId: '@phat_tu_test' })
+      });
+      expect(verifyRes.status).toBe(200);
+      const verifyJson = (await verifyRes.json()) as { ok: boolean; uniqueId: string };
+      expect(verifyJson.ok).toBe(true);
+      expect(verifyJson.uniqueId).toBe('phat_tu_test');
+    } finally {
+      await testStudio.close();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

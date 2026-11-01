@@ -119,10 +119,54 @@ export const TempleSettingsPartialSchema = z
     audioMusicVolume: z.number().min(0).max(1),
     audioSfxVolume: z.number().min(0).max(1),
     audioTtsVolume: z.number().min(0).max(1),
+    audioBellVolume: z.number().min(0).max(1),
+    audioWoodenFishVolume: z.number().min(0).max(1),
+    audioCeremonyVolume: z.number().min(0).max(1),
+    audioDuckingPercent: z.number().min(0).max(100),
+    audioDuckingEnabled: z.boolean(),
+    ttsModerationStrict: z.boolean(),
+    ttsReadFreeComments: z.boolean(),
+    activeBgmTrackId: z.string().nullable(),
+    activePlaylistId: z.string().nullable(),
     moderationEnabled: z.boolean(),
     userCooldownMs: z.number().int().min(200).max(30000)
   })
   .partial();
+
+export const AudioCategorySchema = z.enum([
+  'chant',
+  'buddha_name',
+  'meditation',
+  'bell',
+  'wooden_fish',
+  'prayer',
+  'greeting',
+  'festival',
+  'sfx'
+]);
+
+export const AudioTrackItemSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().min(1).max(120),
+  filename: z.string().min(1).max(255),
+  filepath: z.string(),
+  category: AudioCategorySchema,
+  durationSec: z.number().min(0),
+  fileSizeBytes: z.number().min(0),
+  mimeType: z.string(),
+  isDefaultFor: z.string().nullable().optional(),
+  createdAt: z.number(),
+  url: z.string()
+});
+
+export const AudioPlaylistSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().min(1).max(120),
+  trackIds: z.array(z.string().min(1)),
+  mode: z.enum(['sequence', 'loop_all', 'loop_one', 'shuffle']),
+  isActive: z.boolean(),
+  createdAt: z.number()
+});
 
 export const SimEventTriggerSchema = z.object({
   type: z.enum(['chat', 'like', 'gift', 'follow', 'share', 'join']),
