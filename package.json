@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "sim:burst": "node --experimental-strip-types src/server/cli/burstBenchmark.ts",
-    "qa:visual": "node --experimental-strip-types src/server/cli/visualQaRunner.ts"
+    "qa:visual": "node --experimental-strip-types src/server/cli/visualQaRunner.ts",
+    "qa:audio": "node --experimental-strip-types src/server/cli/e2eAdminAudioQa.ts"
   },
   "dependencies": {
     "@fontsource/be-vietnam-pro": "^5.2.0",
