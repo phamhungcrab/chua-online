@@ -28,6 +28,7 @@ import type {
 } from '../../shared/types.ts';
 import { getVietnameseLunarInfo } from '../utils/lunarCalendar.ts';
 import type { PriorityTtsService } from '../audio/ttsService.ts';
+import { LiveEventDebugger } from '../engine/liveEventDebugger.ts';
 import type { PersistedTotals, SqlitePersistenceStore } from '../persistence/sqliteStore.ts';
 import {
   GiftStreakTracker,
@@ -57,6 +58,7 @@ export class TempleStateEngine {
   private readonly giftStreaks: GiftStreakTracker;
   private readonly likeBatcher: LikeBatchAggregator;
   private readonly buckets: Record<string, TokenBucket>;
+  private readonly eventDebugger = new LiveEventDebugger();
 
   private settings: TempleSettings;
   private totals: PersistedTotals;
@@ -296,9 +298,12 @@ export class TempleStateEngine {
       return null;
     }
 
+    const trace = this.eventDebugger.trackReceived(event);
+
     // 1. Deduplication check
     if (this.deduper.isDuplicate(event.eventId, event.timestamp)) {
       this.eventsDeduplicatedTotal++;
+      this.eventDebugger.markDropped(trace.traceId, 'Chặn trùng (Deduplication: trùng lặp eventId)');
       return null;
     }
 
@@ -306,12 +311,14 @@ export class TempleStateEngine {
     const bucket = this.buckets[event.type];
     if (bucket && !bucket.tryConsume(1, event.timestamp)) {
       this.eventsRateLimitedTotal++;
+      this.eventDebugger.markDropped(trace.traceId, `Giới hạn tần suất TokenBucket (loại: ${event.type})`);
       return null;
     }
 
     // 3. Special handling for Likes (batched)
     if (event.type === 'like') {
       this.eventsAcceptedTotal++;
+      this.eventDebugger.markAccepted(trace.traceId, `Thả tim (+${event.likeCount ?? 1} lượt)`);
       this.ensureSeatedViewer(event.user, { meritDelta: 1 });
       this.likeBatcher.addLike(event.user, event.likeCount ?? 1);
       return null;
@@ -320,14 +327,22 @@ export class TempleStateEngine {
     // 4. Special handling for Gifts (streak tracker)
     if (event.type === 'gift') {
       this.eventsAcceptedTotal++;
+      this.eventDebugger.markAccepted(
+        trace.traceId,
+        `Tặng quà: ${event.gift?.giftName || 'Lễ vật'} ×${event.gift?.repeatCount || 1} (${event.gift?.totalDiamonds || 0} xu)`
+      );
       this.giftStreaks.handleGiftEvent(event);
       return null;
     }
 
     // 5. Member enter
     if (event.type === 'join') {
-      if (!this.settings.joinOnMemberEnter) return null;
+      if (!this.settings.joinOnMemberEnter) {
+        this.eventDebugger.markDropped(trace.traceId, 'Bỏ qua hiển thị Phật tử vào phòng (Tắt trong cài đặt)');
+        return null;
+      }
       this.eventsAcceptedTotal++;
+      this.eventDebugger.markAccepted(trace.traceId, 'Bước qua Tam Quan vào Chánh Điện');
       const v = this.ensureSeatedViewer(event.user, { meritDelta: 1 });
       return this.dispatchRitual({
         actionType: 'TAM_QUAN_ENTER',
@@ -345,9 +360,14 @@ export class TempleStateEngine {
     if (event.type === 'follow' || event.type === 'share') {
       if (!this.userCooldowns.checkAndRecord(event.user.id, 3000, event.timestamp)) {
         this.eventsRateLimitedTotal++;
+        this.eventDebugger.markDropped(trace.traceId, 'Cooldown tương tác Follow/Share (3000ms)');
         return null;
       }
       this.eventsAcceptedTotal++;
+      this.eventDebugger.markAccepted(
+        trace.traceId,
+        event.type === 'follow' ? 'Hữu duyên Follow theo dõi Chánh Điện' : 'Chia sẻ livestream thiện lành'
+      );
       const matched = this.ruleEngine.evaluateFirstMatch(event, event.timestamp);
       const merit = matched?.rule.actionParams.meritBase ?? 12;
       const v = this.ensureSeatedViewer(event.user, { meritDelta: merit });
@@ -376,6 +396,7 @@ export class TempleStateEngine {
       const mod = moderateAndSanitizeComment(event.comment, this.settings.moderationEnabled);
       if (!mod.allowed) {
         this.eventsModeratedTotal++;
+        this.eventDebugger.markDropped(trace.traceId, `Kiểm duyệt từ chối: ${mod.reason || 'Chứa từ cấm / số điện thoại'}`);
         return null;
       }
 
@@ -387,6 +408,10 @@ export class TempleStateEngine {
         )
       ) {
         this.eventsRateLimitedTotal++;
+        this.eventDebugger.markDropped(
+          trace.traceId,
+          `Phật tử gửi liên tiếp trong thời gian cooldown (${this.settings.userCooldownMs}ms)`
+        );
         return null;
       }
 
@@ -396,10 +421,12 @@ export class TempleStateEngine {
         ...event,
         comment: cleanComment
       };
+      (normalizedEvent as any).traceId = trace.traceId;
 
       // Check outfit change command (<= 3 words)
       const skinChoice = matchSkinKeyword(cleanComment);
       if (skinChoice) {
+        this.eventDebugger.markAccepted(trace.traceId, `Lệnh đổi trang phục sang [${skinChoice}]`);
         const v = this.ensureSeatedViewer(event.user, {
           skin: skinChoice,
           meritDelta: 2
@@ -425,6 +452,7 @@ export class TempleStateEngine {
           (o) => trimmedLower === o.keyword.toLowerCase() || trimmedLower.startsWith(o.keyword.toLowerCase() + ' ')
         );
         if (option && !this.pollVotedUsers.has(event.user.id)) {
+          this.eventDebugger.markAccepted(trace.traceId, `Bình chọn tâm nguyện [${option.label}]`);
           this.pollVotedUsers.add(event.user.id);
           option.votes += 1;
           this.poll.totalVotes += 1;
@@ -451,6 +479,7 @@ export class TempleStateEngine {
       // Evaluate dynamic IFTTT rules
       const match = this.ruleEngine.evaluateFirstMatch(normalizedEvent, event.timestamp);
       if (match) {
+        this.eventDebugger.markAccepted(trace.traceId, `Khớp luật nghi lễ: ${match.rule.name}`);
         return this.executeMatchedRule(match.rule, normalizedEvent);
       }
 
@@ -465,6 +494,34 @@ export class TempleStateEngine {
       this.advanceCommunityGoal('incense', 1);
       this.store.saveTotals(this.totals);
       this.recordPrayer(event.user, cleanComment, 5);
+
+      // FREE COMMENTS TTS PIPELINE
+      if (this.settings.ttsEnabled && this.settings.ttsReadFreeComments) {
+        const spokenUser = sanitizeSpokenName(v.nickname);
+        const ttsText = `Phật tử ${spokenUser} chia sẻ: ${cleanComment}.`;
+        this.tts.enqueue({
+          userId: v.id,
+          text: ttsText,
+          voice: this.settings.ttsVoice,
+          ratePercent: this.settings.ttsRatePercent,
+          pitchHz: this.settings.ttsPitchHz,
+          priority: 50,
+          ttlMs: 60_000,
+          ritualId: `chat_${Date.now()}`,
+          traceId: trace.traceId
+        });
+        this.eventDebugger.markQueued(
+          trace.traceId,
+          this.settings.ttsVoice,
+          ttsText,
+          this.tts.getQueueDepth()
+        );
+      } else {
+        this.eventDebugger.markAccepted(
+          trace.traceId,
+          'Dâng tâm hương (Chế độ đọc bình luận tự do đang TẮT)'
+        );
+      }
 
       return this.dispatchRitual({
         actionType: 'BURN_INCENSE',
@@ -565,8 +622,15 @@ export class TempleStateEngine {
         ratePercent: this.settings.ttsRatePercent,
         pitchHz: this.settings.ttsPitchHz,
         priority: tier >= 4 ? 110 : 100,
-        ttlMs: 300_000
+        ttlMs: 300_000,
+        traceId: event.eventId
       });
+      this.eventDebugger.markQueued(
+        event.eventId,
+        this.settings.ttsVoice,
+        ttsText,
+        this.tts.getQueueDepth()
+      );
     }
 
     this.recordPrayer(event.user, recentWish, meritAwarded);
@@ -659,7 +723,8 @@ export class TempleStateEngine {
       this.settings.ttsEnabled &&
       Boolean(rule.actionParams.readTts) &&
       (rule.actionType !== 'DRAW_FORTUNE' || this.settings.ttsReadFortunes) &&
-      (rule.actionType !== 'RELEASE_LANTERN' || this.settings.ttsReadPrayers);
+      (rule.actionType !== 'RELEASE_LANTERN' || this.settings.ttsReadPrayers) &&
+      (rule.actionType !== 'BURN_INCENSE' || this.settings.ttsReadFreeComments);
 
     if (shouldReadTts && rule.actionParams.ttsTemplate) {
       ttsText = DynamicRuleEngine.interpolateTemplate(rule.actionParams.ttsTemplate, {
@@ -668,6 +733,7 @@ export class TempleStateEngine {
         merit,
         fortune
       });
+      const traceId = (event as any).traceId;
       this.tts.enqueue({
         userId: v.id,
         text: ttsText,
@@ -675,8 +741,17 @@ export class TempleStateEngine {
         ratePercent: this.settings.ttsRatePercent,
         pitchHz: this.settings.ttsPitchHz,
         priority: rule.priority,
-        ttlMs: 90_000
+        ttlMs: 90_000,
+        traceId
       });
+      if (traceId) {
+        this.eventDebugger.markQueued(
+          traceId,
+          this.settings.ttsVoice,
+          ttsText,
+          this.tts.getQueueDepth()
+        );
+      }
     }
 
     return this.dispatchRitual({
@@ -885,6 +960,27 @@ export class TempleStateEngine {
     };
   }
 
+  public getEventDebugger(): LiveEventDebugger {
+    return this.eventDebugger;
+  }
+
+  public resetTransientState(): void {
+    this.tts.clearQueue();
+    this.giftStreaks.clear();
+    this.likeBatcher.clear();
+    this.userCooldowns.clear();
+    this.deduper.clear();
+    this.recentRituals.length = 0;
+    this.lanterns.length = 0;
+    this.pollVotedUsers.clear();
+    this.eventDebugger.clear();
+    this.eventsAcceptedTotal = 0;
+    this.eventsDeduplicatedTotal = 0;
+    this.eventsRateLimitedTotal = 0;
+    this.eventsModeratedTotal = 0;
+    this.onStateChangedCallback?.();
+  }
+
   public getSnapshot(
     connectorStatus: ConnectorStatus,
     simulatorStatus: SimulatorStatus
@@ -911,7 +1007,8 @@ export class TempleStateEngine {
       rules: this.ruleEngine.getRules(),
       clientPerf: [...this.clientPerfMap.values()],
       lunarInfo: getVietnameseLunarInfo(),
-      prayers: [...this.prayers].slice(0, 30)
+      prayers: [...this.prayers].slice(0, 30),
+      eventTraces: this.eventDebugger.getRecentTraces(50)
     };
   }
 

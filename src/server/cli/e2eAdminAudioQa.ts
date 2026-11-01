@@ -197,6 +197,54 @@ async function runE2eQa(): Promise<void> {
       detail: `Verify status text: "${verifyStatus}"`
     });
 
+    // Step 8b: Test Live Event Debugger & Mock Comment Pipeline
+    await adminPage.locator('#inpMockNickname').fill('Diệu Tâm E2E');
+    await adminPage.locator('#inpMockComment').fill('Nam mô A Di Đà Phật, cầu quốc thái dân an');
+    await adminPage.click('#btnSendMockComment');
+    await adminPage.waitForTimeout(1000);
+
+    const debuggerContent = await adminPage.locator('#debuggerTableBody').innerText();
+    const hasMockTrace = debuggerContent.includes('Diệu Tâm E2E');
+    results.push({
+      step: 'Live Event Debugger & Real-time Trace Pipeline',
+      passed: hasMockTrace,
+      detail: hasMockTrace ? 'Mock comment traversed pipeline and logged in trace table.' : 'Trace not found in table.'
+    });
+
+    // Step 8c: Test Safe Reset & Recovery Modal Interaction (strict "RESET" check)
+    await adminPage.click('#btnTriggerResetSession');
+    await adminPage.waitForTimeout(300);
+    const isModalOpen = await adminPage.locator('#modalResetConfirmation').evaluate((el) => el.classList.contains('active'));
+    const isBtnDisabledInitially = await adminPage.locator('#btnConfirmResetAction').isDisabled();
+
+    // Type lowercase "reset" -> button MUST remain disabled
+    await adminPage.locator('#inpResetConfirmation').fill('reset');
+    const isBtnDisabledOnLowercase = await adminPage.locator('#btnConfirmResetAction').isDisabled();
+
+    // Type exact uppercase "RESET" -> button MUST become enabled
+    await adminPage.locator('#inpResetConfirmation').fill('RESET');
+    const isBtnEnabledOnUppercase = !(await adminPage.locator('#btnConfirmResetAction').isDisabled());
+
+    // Cancel modal
+    await adminPage.click('#btnCancelResetAction');
+    await adminPage.waitForTimeout(200);
+    const isModalClosed = !(await adminPage.locator('#modalResetConfirmation').evaluate((el) => el.classList.contains('active')));
+
+    results.push({
+      step: 'Safe Reset Confirmation Modal (Strict "RESET" Guard)',
+      passed: isModalOpen && isBtnDisabledInitially && isBtnDisabledOnLowercase && isBtnEnabledOnUppercase && isModalClosed,
+      detail: `Modal open: ${isModalOpen}, Initial disabled: ${isBtnDisabledInitially}, Lowercase guard: ${isBtnDisabledOnLowercase}, Uppercase match: ${isBtnEnabledOnUppercase}, Clean cancel: ${isModalClosed}`
+    });
+
+    // Step 8d: Test Telemetry Badges (Audio Playback Leader & Free Comments Status)
+    const audioLeaderText = await adminPage.locator('#mAudioLeader').innerText();
+    const freeCommentsText = await adminPage.locator('#mFreeCommentsStatus').innerText();
+    results.push({
+      step: 'Admin Telemetry Tiles (Leader & Free Comments)',
+      passed: audioLeaderText.length > 0 && (freeCommentsText === 'BẬT' || freeCommentsText === 'TẮT'),
+      detail: `Leader: "${audioLeaderText}", Free Comments: "${freeCommentsText}"`
+    });
+
     // Step 9: Capture Admin Screenshot
     const adminScreenshotPath = path.join(screenshotsDir, 'e2e_audio_admin.png');
     await adminPage.screenshot({ path: adminScreenshotPath, fullPage: true });

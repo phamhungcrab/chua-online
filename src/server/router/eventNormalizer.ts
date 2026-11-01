@@ -102,6 +102,10 @@ export class UserCooldownTracker {
     }
     return true;
   }
+
+  public clear(): void {
+    this.lastActionByUser.clear();
+  }
 }
 
 /**
@@ -219,6 +223,13 @@ export class GiftStreakTracker {
     }
     this.streaks.clear();
   }
+
+  public clear(): void {
+    for (const [, entry] of this.streaks) {
+      if (entry.timer) clearTimeout(entry.timer);
+    }
+    this.streaks.clear();
+  }
 }
 
 /**
@@ -268,6 +279,15 @@ export class LikeBatchAggregator {
     this.pendingCount = 0;
     this.pendingUsers.clear();
     this.onFlush({ count, users });
+  }
+
+  public clear(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.pendingCount = 0;
+    this.pendingUsers.clear();
   }
 }
 

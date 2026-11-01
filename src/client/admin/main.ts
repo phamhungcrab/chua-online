@@ -4,6 +4,7 @@ import '@fontsource/be-vietnam-pro/700.css';
 import '@fontsource/noto-serif/700.css';
 import type {
   EventActionRule,
+  EventTraceItem,
   ServerToClientWsMessage,
   TempleStateSnapshot
 } from '../../shared/types.ts';
@@ -116,6 +117,32 @@ function renderSnapshot(snap: TempleStateSnapshot): void {
   document.getElementById('mModerated')!.textContent = String(snap.metrics.eventsModeratedTotal);
   document.getElementById('mTtsQueue')!.textContent = String(snap.metrics.ttsQueueDepth);
   document.getElementById('mTtsProcessed')!.textContent = String(snap.metrics.ttsProcessedTotal);
+
+  const elAudioLeader = document.getElementById('mAudioLeader');
+  if (elAudioLeader) {
+    elAudioLeader.textContent = snap.audioLeaderClientId ? `Leader: ${snap.audioLeaderClientId}` : '(Chờ Overlay kết nối)';
+  }
+
+  const elFreeComments = document.getElementById('mFreeCommentsStatus');
+  if (elFreeComments) {
+    const isFree = Boolean(snap.settings.ttsReadFreeComments);
+    elFreeComments.textContent = isFree ? 'BẬT' : 'TẮT';
+    elFreeComments.style.color = isFree ? 'var(--jade)' : 'var(--danger)';
+  }
+
+  const elGitCommit = document.getElementById('mGitCommit');
+  if (elGitCommit && snap.gitCommit) {
+    elGitCommit.textContent = snap.gitCommit;
+  }
+
+  if (snap.eventTraces && snap.eventTraces.length > 0) {
+    const tbody = document.getElementById('debuggerTableBody');
+    if (tbody && tbody.querySelector('td[colspan="7"]')) {
+      for (const trace of [...snap.eventTraces].reverse()) {
+        upsertDebuggerRow(trace);
+      }
+    }
+  }
 
   if (!formInitialized) {
     formInitialized = true;
@@ -1132,6 +1159,15 @@ function connectAdminWs(): void {
         livePrayerRegistry.prepend(row);
       } else if (msg.type === 'likeBatch') {
         appendLiveLog('heart', '❤️ [Thả Tim]', `Nhận batch <b>${msg.count}</b> tim -> Gõ Mõ`);
+      } else if (msg.type === 'eventTrace') {
+        upsertDebuggerRow(msg.trace);
+      } else if (msg.type === 'eventTraceBatch') {
+        for (const t of msg.traces) upsertDebuggerRow(t);
+      } else if (msg.type === 'audioLeaderUpdate') {
+        const elAudioLeader = document.getElementById('mAudioLeader');
+        if (elAudioLeader) {
+          elAudioLeader.textContent = msg.leaderClientId ? `Leader: ${msg.leaderClientId}` : '(Chờ Overlay kết nối)';
+        }
       }
     } catch {
       // ignore
@@ -1140,6 +1176,225 @@ function connectAdminWs(): void {
   ws.onclose = () => {
     setTimeout(connectAdminWs, 2500);
   };
+}
+
+// ======================================================================
+// LIVE EVENT DEBUGGER & PIPELINE TRACING
+// ======================================================================
+function upsertDebuggerRow(trace: EventTraceItem): void {
+  const tbody = document.getElementById('debuggerTableBody');
+  if (!tbody) return;
+
+  // Clear initial placeholder row
+  const placeholder = tbody.querySelector('td[colspan="7"]');
+  if (placeholder) {
+    tbody.replaceChildren();
+  }
+
+  const existingRow = document.getElementById(`trace-${trace.traceId}`);
+  const timeStr = new Date(trace.updatedAt).toLocaleTimeString('vi-VN');
+
+  const stageBadgeStyle: Record<string, { bg: string; color: string; label: string }> = {
+    RECEIVED: { bg: 'rgba(255,255,255,0.08)', color: 'var(--muted)', label: '📥 Nhận vào' },
+    ACCEPTED: { bg: 'rgba(30,144,255,0.2)', color: '#63b3ed', label: '🔍 Hợp lệ' },
+    QUEUED: { bg: 'rgba(237,137,54,0.2)', color: '#f6ad55', label: '⏳ Hàng đợi' },
+    SYNTHESIZED: { bg: 'rgba(159,122,234,0.2)', color: '#b794f4', label: '🎙️ Đã tạo Audio' },
+    PLAYING: { bg: 'rgba(229,184,91,0.25)', color: 'var(--gold-bright)', label: '🔊 Đang phát' },
+    COMPLETED: { bg: 'rgba(72,187,120,0.2)', color: 'var(--jade)', label: '✅ Hoàn thành' },
+    DROPPED: { bg: 'rgba(229,62,62,0.25)', color: 'var(--danger)', label: '🚫 Chặn / Bỏ' }
+  };
+  const b = stageBadgeStyle[trace.stage] || { bg: 'rgba(255,255,255,0.08)', color: 'var(--muted)', label: trace.stage };
+
+  let detailContent = '';
+  if (trace.stage === 'DROPPED') {
+    detailContent = `<span style="color:var(--danger); font-weight:600;">Lý do: ${trace.reason || 'Bị lọc'}</span>`;
+  } else if (trace.ttsText) {
+    const voiceTag = trace.ttsVoice
+      ? `<span style="font-size:10px; color:var(--gold-bright); border:1px solid rgba(229,184,91,0.3); padding:1px 4px; border-radius:4px; margin-right:4px;">${trace.ttsVoice}</span>`
+      : '';
+    detailContent = `${voiceTag}<span style="font-style:italic;">"${trace.ttsText}"</span>`;
+  } else if (trace.reason) {
+    detailContent = `<span style="color:var(--muted);">${trace.reason}</span>`;
+  } else {
+    detailContent = `<span style="color:var(--muted);">Đang xử lý pipeline</span>`;
+  }
+
+  const rowHtml = `
+    <td style="color:var(--muted); font-family:monospace;">${timeStr}</td>
+    <td><b style="color:var(--text);">${trace.user.nickname || trace.user.uniqueId || 'Ẩn danh'}</b></td>
+    <td><span style="font-size:11px; padding:2px 6px; border-radius:4px; background:rgba(255,255,255,0.06);">${trace.type}</span></td>
+    <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${trace.rawContent}">${trace.rawContent}</td>
+    <td><span style="font-size:11px; font-weight:600; padding:2px 6px; border-radius:4px; background:${b.bg}; color:${b.color};">${b.label}</span></td>
+    <td style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${detailContent.replace(/<[^>]+>/g, '')}">${detailContent}</td>
+    <td style="color:var(--muted); font-family:monospace;">${trace.latencyMs !== undefined ? `${trace.latencyMs}ms` : '-'}</td>
+  `;
+
+  if (existingRow) {
+    existingRow.innerHTML = rowHtml;
+  } else {
+    const tr = document.createElement('tr');
+    tr.id = `trace-${trace.traceId}`;
+    tr.innerHTML = rowHtml;
+    tbody.prepend(tr);
+
+    while (tbody.children.length > 80) {
+      tbody.removeChild(tbody.lastChild!);
+    }
+  }
+}
+
+// Live Event Debugger Controls
+const btnSendMockComment = document.getElementById('btnSendMockComment') as HTMLButtonElement | null;
+const inpMockNickname = document.getElementById('inpMockNickname') as HTMLInputElement | null;
+const inpMockComment = document.getElementById('inpMockComment') as HTMLInputElement | null;
+
+if (btnSendMockComment) {
+  btnSendMockComment.onclick = async () => {
+    const nickname = inpMockNickname?.value.trim() || 'Diệu Tâm';
+    const comment = inpMockComment?.value.trim() || 'Nam mô A Di Đà Phật, chúc đạo tràng an lạc';
+    try {
+      btnSendMockComment.disabled = true;
+      btnSendMockComment.textContent = 'Đang gửi...';
+      const res = await callAdminApi('/api/admin/events/mock-chat', { nickname, comment });
+      showToast(`Đã đưa bình luận "${nickname}" vào pipeline (Trace ID: ${res.traceId})`);
+    } catch (e: any) {
+      showToast(`Lỗi gửi mock comment: ${e.message}`);
+    } finally {
+      btnSendMockComment.disabled = false;
+      btnSendMockComment.textContent = 'Gửi Bình Luận Qua Pipeline';
+    }
+  };
+}
+
+const btnExportDiagnostics = document.getElementById('btnExportDiagnostics');
+if (btnExportDiagnostics) {
+  btnExportDiagnostics.onclick = () => {
+    window.open('/api/admin/diagnostics/export', '_blank');
+  };
+}
+
+const btnClearDebuggerTable = document.getElementById('btnClearDebuggerTable');
+if (btnClearDebuggerTable) {
+  btnClearDebuggerTable.onclick = () => {
+    const tbody = document.getElementById('debuggerTableBody');
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--muted); padding:16px;">Đã làm sạch bảng theo dõi trace.</td></tr>`;
+    }
+  };
+}
+
+// Audio Engine Live Controls
+const btnStopCurrentSpeech = document.getElementById('btnStopCurrentSpeech');
+if (btnStopCurrentSpeech) {
+  btnStopCurrentSpeech.onclick = async () => {
+    try {
+      await callAdminApi('/api/admin/audio/stop');
+      showToast('Đã phát lệnh dừng ngay âm thanh / TTS đang đọc');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  };
+}
+
+const btnClearTtsQueue = document.getElementById('btnClearTtsQueue');
+if (btnClearTtsQueue) {
+  btnClearTtsQueue.onclick = async () => {
+    try {
+      const res = await callAdminApi('/api/admin/audio/clear-queue');
+      showToast(`Đã làm sạch hàng đợi TTS (${res.clearedCount ?? 0} câu đã hủy)`);
+      if (res.snapshot) renderSnapshot(res.snapshot);
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  };
+}
+
+const btnRestartAudioEngine = document.getElementById('btnRestartAudioEngine');
+if (btnRestartAudioEngine) {
+  btnRestartAudioEngine.onclick = async () => {
+    try {
+      await callAdminApi('/api/admin/audio/restart-engine');
+      showToast('Đã phát tín hiệu khởi động lại audio engine trên Overlay');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  };
+}
+
+// ======================================================================
+// SAFE SYSTEM RESET & RECOVERY CENTER
+// ======================================================================
+let activeResetScope: 'session' | 'config' | 'factory' = 'session';
+const modalResetConfirmation = document.getElementById('modalResetConfirmation');
+const modalResetTitle = document.getElementById('modalResetTitle');
+const modalResetDesc = document.getElementById('modalResetDesc');
+const inpResetConfirmation = document.getElementById('inpResetConfirmation') as HTMLInputElement | null;
+const btnConfirmResetAction = document.getElementById('btnConfirmResetAction') as HTMLButtonElement | null;
+const btnCancelResetAction = document.getElementById('btnCancelResetAction') as HTMLButtonElement | null;
+
+function openResetModal(scope: 'session' | 'config' | 'factory'): void {
+  if (!modalResetConfirmation || !modalResetTitle || !modalResetDesc || !inpResetConfirmation || !btnConfirmResetAction) return;
+  activeResetScope = scope;
+  inpResetConfirmation.value = '';
+  btnConfirmResetAction.disabled = true;
+
+  if (scope === 'session') {
+    modalResetTitle.textContent = '🔄 Xác Nhận Đặt Lại Phiên Live (Session)';
+    modalResetDesc.textContent =
+      'Dừng ngay âm thanh đang phát, làm sạch hàng đợi TTS, xóa danh sách bồ đoàn tạm thời và bộ đếm tim/quà. Cấu hình và tệp âm thanh tải lên vẫn được bảo toàn an toàn.';
+  } else if (scope === 'config') {
+    modalResetTitle.textContent = '⚙️ Xác Nhận Khôi Phục Cấu Hình Chuẩn (Config)';
+    modalResetDesc.textContent =
+      'Đưa toàn bộ thiết lập Chánh Điện và 12 Luật Nghi Thức về mặc định. Bản sao lưu cấu hình cũ sẽ tự động được tạo tại data/backups/.';
+  } else if (scope === 'factory') {
+    modalResetTitle.textContent = '⚠️ Xác Nhận Khôi Phục Gốc Toàn Diện (Factory)';
+    modalResetDesc.textContent =
+      'Tạo bản sao lưu toàn vẹn SQLite, sau đó khôi phục toàn bộ database về trạng thái sạch gốc của Chùa Online. Hãy chắc chắn trước khi tiếp tục.';
+  }
+
+  modalResetConfirmation.classList.add('active');
+  inpResetConfirmation.focus();
+}
+
+document.getElementById('btnTriggerResetSession')?.addEventListener('click', () => openResetModal('session'));
+document.getElementById('btnTriggerResetConfig')?.addEventListener('click', () => openResetModal('config'));
+document.getElementById('btnTriggerResetFactory')?.addEventListener('click', () => openResetModal('factory'));
+
+if (inpResetConfirmation && btnConfirmResetAction) {
+  inpResetConfirmation.addEventListener('input', () => {
+    btnConfirmResetAction.disabled = inpResetConfirmation.value !== 'RESET';
+  });
+}
+
+if (btnCancelResetAction && modalResetConfirmation && inpResetConfirmation) {
+  btnCancelResetAction.addEventListener('click', () => {
+    modalResetConfirmation.classList.remove('active');
+    inpResetConfirmation.value = '';
+  });
+}
+
+if (btnConfirmResetAction && inpResetConfirmation && modalResetConfirmation) {
+  btnConfirmResetAction.addEventListener('click', async () => {
+    if (inpResetConfirmation.value !== 'RESET') return;
+    try {
+      btnConfirmResetAction.disabled = true;
+      btnConfirmResetAction.textContent = 'Đang thực hiện...';
+      const res = await callAdminApi('/api/admin/system/reset', {
+        scope: activeResetScope,
+        confirmToken: inpResetConfirmation.value
+      });
+      showToast(res.message || 'Đã hoàn tất thao tác đặt lại');
+      modalResetConfirmation.classList.remove('active');
+      inpResetConfirmation.value = '';
+      if (res.snapshot) renderSnapshot(res.snapshot);
+      void loadAudioTracks();
+    } catch (err: any) {
+      showToast(`Lỗi đặt lại: ${err.message}`);
+    } finally {
+      btnConfirmResetAction.textContent = 'Xác Nhận Thực Hiện';
+      btnConfirmResetAction.disabled = inpResetConfirmation.value !== 'RESET';
+    }
+  });
 }
 
 connectAdminWs();

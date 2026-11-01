@@ -438,6 +438,99 @@
       color: var(--danger);
       font-weight: bold;
     }
+
+    /* Reset & Modal Styles */
+    .reset-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+      margin-top: 10px;
+    }
+    .reset-card {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1.5px solid rgba(229, 184, 91, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+    .reset-card:hover {
+      border-color: var(--gold-bright);
+    }
+    .reset-card.danger {
+      border-color: rgba(230, 80, 60, 0.5);
+    }
+    .reset-card.danger:hover {
+      border-color: #ff5544;
+    }
+    .reset-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .reset-card-header h3 {
+      font-size: 14px;
+      margin: 0;
+      color: var(--gold-bright);
+    }
+    .reset-card-header.danger h3 {
+      color: #ff7766;
+    }
+    .reset-card-desc {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0;
+    }
+    .reset-card-badge {
+      display: inline-block;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(229,184,91,0.12);
+      color: var(--gold-bright);
+      margin-top: 6px;
+    }
+
+    /* Modal Backdrop & Dialog */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.78);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 16px;
+    }
+    .modal-backdrop.active {
+      display: flex;
+    }
+    .modal-dialog {
+      background: #1e0905;
+      border: 2px solid var(--gold);
+      border-radius: 16px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(229, 184, 91, 0.25);
+      padding: 24px;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .modal-dialog h3 {
+      margin: 0;
+      color: #ff6655;
+      font-size: 17px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
   </style>
 </head>
 <body>
@@ -655,8 +748,11 @@
       <section class="panel-card full-span" id="audioRitualControlCenter">
         <h2>
           <span>4. Trung Tâm Âm Thanh &amp; Nghi Lễ (Audio &amp; Ritual Control Center)</span>
-          <div style="display:flex; gap:8px; align-items:center;">
+          <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
             <button type="button" class="gold" id="btnToggleMasterTts">🎙️ Giọng Đọc: ĐANG BẬT</button>
+            <button type="button" id="btnStopCurrentSpeech" style="color:#ff8888;">⏹ Dừng Giọng Đang Đọc</button>
+            <button type="button" id="btnClearTtsQueue" style="color:#ffaa66;">🗑️ Xóa Hàng Đợi TTS</button>
+            <button type="button" id="btnRestartAudioEngine">🔄 Khởi Động Lại Audio</button>
             <button type="button" id="btnMuteAllAudio">🔇 Mute Tất Cả</button>
           </div>
         </h2>
@@ -1029,6 +1125,60 @@
             <div class="val" id="mFrameTime">1.8 ms</div>
             <div class="lbl">Frame Time Trung Bình</div>
           </div>
+          <div class="metric-tile">
+            <div class="val" id="mAudioLeader" style="font-size:12px; font-family:monospace; color:var(--jade); word-break:break-all;">(Đang kết nối)</div>
+            <div class="lbl">Playback Leader (Phát Âm Thanh)</div>
+          </div>
+          <div class="metric-tile">
+            <div class="val" id="mFreeCommentsStatus" style="font-size:13px; font-weight:700; color:var(--jade);">BẬT</div>
+            <div class="lbl">Đọc Bình Luận Tự Do</div>
+          </div>
+          <div class="metric-tile">
+            <div class="val" id="mGitCommit" style="font-size:14px; font-family:monospace; color:var(--gold-bright);">main</div>
+            <div class="lbl">Bản Dựng Server (Git)</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. Live Event Debugger (Theo Dõi Chi Tiết Bình Luận & Pipeline TTS) -->
+      <section class="panel-card full-span" id="secLiveEventDebugger">
+        <h2>
+          <span>6. Trình Gỡ Lỗi Sự Kiện &amp; Pipeline TTS Trực Tiếp (Live Event Debugger)</span>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button type="button" class="gold" id="btnExportDiagnostics">📥 Xuất Nhật Ký Chẩn Đoán (JSON)</button>
+            <button type="button" id="btnClearDebuggerTable">🧹 Xóa Bảng Trace</button>
+          </div>
+        </h2>
+        
+        <!-- Mock Comment Injection Form -->
+        <div style="padding:10px 14px; background:rgba(0,0,0,0.35); border-radius:10px; border:1px solid rgba(229,184,91,0.25); margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <strong style="color:var(--gold-bright); font-size:13px;">🚀 Thử Nghiệm Bình Luận Thật (Mock Comment Pipeline):</strong>
+          <input type="text" id="inpMockNickname" placeholder="Tên Phật Tử" value="Diệu Tâm" style="max-width:130px;" />
+          <input type="text" id="inpMockComment" placeholder="Nội dung bình luận thử nghiệm" value="Nam mô A Di Đà Phật, con cầu cho gia đình mạnh khỏe an khang" style="flex:1; min-width:240px;" />
+          <button type="button" class="primary" id="btnSendMockComment">Gửi Bình Luận Qua Pipeline</button>
+        </div>
+
+        <div style="max-height:320px; overflow-y:auto; border-radius:8px; border:1px solid var(--border);">
+          <table class="rules-table" style="margin:0; font-size:12px;">
+            <thead>
+              <tr style="position:sticky; top:0; background:rgba(20,5,2,0.95); z-index:2;">
+                <th style="width:75px;">Thời gian</th>
+                <th style="width:130px;">Phật tử</th>
+                <th style="width:80px;">Loại</th>
+                <th>Nội dung sự kiện</th>
+                <th style="width:125px;">Giai đoạn Pipeline</th>
+                <th style="width:210px;">Chi tiết / Giọng / Lý do</th>
+                <th style="width:70px;">Độ trễ</th>
+              </tr>
+            </thead>
+            <tbody id="debuggerTableBody">
+              <tr>
+                <td colspan="7" style="text-align:center; color:var(--muted); padding:16px;">
+                  Chưa có sự kiện nào đi qua pipeline. Hãy gửi bình luận thử ở trên hoặc nhận sự kiện từ TikTok LIVE.
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -1082,8 +1232,87 @@
           <tbody id="rulesTableBody"></tbody>
         </table>
       </section>
+
+      <!-- 8. Safe System Reset & Recovery Center -->
+      <section class="panel-card full-span" id="secSystemReset">
+        <h2>
+          <span>8. Quản Lý Hệ Thống &amp; Khôi Phục Trạng Thái (Safe Reset &amp; Recovery)</span>
+          <span style="font-size:12px; color:var(--muted); font-weight:normal;">Tự động sao lưu an toàn trước mọi tác vụ đặt lại</span>
+        </h2>
+        <p style="font-size:13px; color:var(--muted); margin-top:0;">
+          Chọn phạm vi đặt lại phù hợp theo tình huống livestream. Mọi thao tác đều có xác nhận an toàn chống bấm nhầm (yêu cầu gõ chữ <strong>RESET</strong>).
+        </p>
+        <div class="reset-cards-grid">
+          <!-- Scope A: Session Reset -->
+          <div class="reset-card">
+            <div>
+              <div class="reset-card-header">
+                <span style="font-size:18px;">🔄</span>
+                <h3>A. Đặt Lại Phiên Live (Session)</h3>
+              </div>
+              <p class="reset-card-desc">
+                Dừng ngay âm thanh đang phát, làm rỗng hàng đợi TTS, xóa danh sách Phật tử tạm thời trên bồ đoàn và xóa bộ đếm quà/tim.
+              </p>
+              <div class="reset-card-badge">✅ Giữ nguyên cài đặt, luật sự kiện &amp; file âm thanh đã tải lên</div>
+            </div>
+            <button type="button" class="gold" id="btnTriggerResetSession">Đặt Lại Phiên Hiện Tại</button>
+          </div>
+
+          <!-- Scope B: Config Reset -->
+          <div class="reset-card">
+            <div>
+              <div class="reset-card-header">
+                <span style="font-size:18px;">⚙️</span>
+                <h3>B. Khôi Phục Cấu Hình (Config)</h3>
+              </div>
+              <p class="reset-card-desc">
+                Đưa toàn bộ thông số Chánh Điện, giọng đọc tiếng Việt và 12 Luật Nghi thức về trạng thái ban đầu được kiến tạo tối ưu.
+              </p>
+              <div class="reset-card-badge">💾 Tự động sao lưu cấu hình cũ vào data/backups/</div>
+            </div>
+            <button type="button" id="btnTriggerResetConfig">Khôi Phục Cấu Hình Chuẩn</button>
+          </div>
+
+          <!-- Scope C: Factory Reset -->
+          <div class="reset-card danger">
+            <div>
+              <div class="reset-card-header danger">
+                <span style="font-size:18px;">⚠️</span>
+                <h3>C. Khôi Phục Gốc Toàn Diện (Factory)</h3>
+              </div>
+              <p class="reset-card-desc">
+                Tạo bản sao lưu toàn vẹn SQLite, sau đó tái tạo cơ sở dữ liệu về mặc định sạch của Chùa Online, xóa session và trạng thái tạm.
+              </p>
+              <div class="reset-card-badge" style="background:rgba(230,80,60,0.15); color:#ff8877;">🛡️ Checkpoint sao lưu tự động trước khi thực hiện</div>
+            </div>
+            <button type="button" class="primary" style="background:#8b1a1a; border-color:#ff5544;" id="btnTriggerResetFactory">Khôi Phục Cài Đặt Gốc</button>
+          </div>
+        </div>
+      </section>
     </div>
   </main>
+
+  <!-- Modal Reset Confirmation -->
+  <div class="modal-backdrop" id="modalResetConfirmation">
+    <div class="modal-dialog">
+      <h3 id="modalResetTitle">⚠️ Xác Nhận Đặt Lại Hệ Thống</h3>
+      <p id="modalResetDesc" style="font-size:13px; line-height:1.5; color:var(--text); margin:0;">
+        Thao tác này sẽ đặt lại trạng thái hệ thống. Hãy cân nhắc cẩn thận nếu đang phát sóng trực tiếp.
+      </p>
+      <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(229,184,91,0.25); border-radius:8px; padding:12px;">
+        <label for="inpResetConfirmation" style="font-size:12px; color:var(--muted); display:block; margin-bottom:6px;">
+          Để xác nhận, vui lòng nhập chính xác chữ: <strong style="color:var(--gold-bright); font-size:13px;">RESET</strong> (viết hoa):
+        </label>
+        <input type="text" id="inpResetConfirmation" placeholder="Nhập RESET..." autocomplete="off" style="width:100%; box-sizing:border-box; font-family:monospace; font-size:14px; letter-spacing:1px; text-transform:uppercase;" />
+      </div>
+      <div class="btn-row" style="justify-content:flex-end; margin-top:8px;">
+        <button type="button" id="btnCancelResetAction">Hủy bỏ</button>
+        <button type="button" class="primary" id="btnConfirmResetAction" disabled style="background:#b82b18; border-color:#ff5544; min-width:140px;">
+          Xác Nhận Thực Hiện
+        </button>
+      </div>
+    </div>
+  </div>
 
   <div id="toastBar">Đã lưu cấu hình</div>
 

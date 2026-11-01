@@ -64,6 +64,40 @@ export class TempleAudioEngine {
 
   private readonly ttsQueue: TtsBroadcastPayload[] = [];
   private ttsPlaying = false;
+  private isAudioLeader = false;
+  private currentAudio: HTMLAudioElement | null = null;
+  public onPlaybackStarted?: (traceId?: string) => void;
+  public onPlaybackFinished?: (traceId?: string) => void;
+
+  public setAudioLeader(isLeader: boolean): void {
+    this.isAudioLeader = isLeader;
+    if (!isLeader) {
+      this.clearTtsQueue();
+    }
+  }
+
+  public getIsAudioLeader(): boolean {
+    return this.isAudioLeader;
+  }
+
+  public stopCurrentAudio(): void {
+    if (this.currentAudio) {
+      try {
+        this.currentAudio.pause();
+        this.currentAudio.currentTime = 0;
+      } catch {
+        // ignore
+      }
+      this.currentAudio = null;
+    }
+    this.ttsPlaying = false;
+    this.setDucking(false);
+  }
+
+  public clearTtsQueue(): void {
+    this.ttsQueue.length = 0;
+    this.stopCurrentAudio();
+  }
 
   public setMuted(muted: boolean): void {
     this.isMuted = muted;
@@ -364,7 +398,10 @@ export class TempleAudioEngine {
 
   public enqueueTts(payload: TtsBroadcastPayload): void {
     if (!this.settings.ttsEnabled || this.isMuted) return;
-    if (this.ttsQueue.length >= 12) {
+    // Only the designated Audio Playback Leader plays TTS audio
+    if (!this.isAudioLeader) return;
+
+    if (this.ttsQueue.length >= 15) {
       this.ttsQueue.shift();
     }
     this.ttsQueue.push(payload);
@@ -372,18 +409,24 @@ export class TempleAudioEngine {
   }
 
   private async drainTtsQueue(): Promise<void> {
-    if (this.ttsPlaying || this.ttsQueue.length === 0 || this.isMuted) return;
+    if (this.ttsPlaying || this.ttsQueue.length === 0 || this.isMuted || !this.isAudioLeader) return;
     this.ttsPlaying = true;
     this.setDucking(true);
 
     try {
-      while (this.ttsQueue.length > 0 && !this.isMuted) {
+      while (this.ttsQueue.length > 0 && !this.isMuted && this.isAudioLeader) {
         const next = this.ttsQueue.shift()!;
+        this.onPlaybackStarted?.(next.traceId);
+
         if (next.audioUrl && this.unlocked) {
           await this.playAudioUrl(next.audioUrl);
-        } else if (typeof window !== 'undefined' && 'speechSynthesis' in window && this.unlocked) {
-          await this.playBrowserSpeechFallback(next.text);
+        } else {
+          // Zero English speech fallback: play gentle sacred singing bowl chime
+          this.playIncenseChime();
+          await new Promise((r) => setTimeout(r, 1200));
         }
+
+        this.onPlaybackFinished?.(next.traceId);
       }
     } finally {
       this.ttsPlaying = false;
@@ -392,81 +435,38 @@ export class TempleAudioEngine {
   }
 
   private playAudioUrl(url: string): Promise<void> {
-    if (this.isMuted) return Promise.resolve();
+    if (this.isMuted || !this.isAudioLeader) return Promise.resolve();
     return new Promise((resolve) => {
       try {
         const audio = new Audio(url);
+        this.currentAudio = audio;
         const effectiveVol = Math.max(
           0,
           Math.min(1, this.settings.audioTtsVolume * this.settings.audioMasterVolume)
         );
         audio.volume = effectiveVol;
-        const timeout = setTimeout(() => resolve(), 18000);
+        const timeout = setTimeout(() => {
+          if (this.currentAudio === audio) this.currentAudio = null;
+          resolve();
+        }, 20000);
+
         audio.onended = () => {
           clearTimeout(timeout);
+          if (this.currentAudio === audio) this.currentAudio = null;
           resolve();
         };
         audio.onerror = () => {
           clearTimeout(timeout);
+          if (this.currentAudio === audio) this.currentAudio = null;
           resolve();
         };
         audio.play().catch(() => {
           clearTimeout(timeout);
+          if (this.currentAudio === audio) this.currentAudio = null;
           resolve();
         });
       } catch {
-        resolve();
-      }
-    });
-  }
-
-  /**
-   * STRICT Vietnamese-Only Speech Synthesis Fallback.
-   * If the host browser/OS has NO Vietnamese voice installed, this NEVER calls synth.speak()
-   * (which would otherwise default to an English voice speaking gibberish).
-   * Instead, it gracefully chimes a sacred temple singing bowl and resolves cleanly.
-   */
-  private playBrowserSpeechFallback(text: string): Promise<void> {
-    if (this.isMuted) return Promise.resolve();
-    return new Promise((resolve) => {
-      try {
-        const synth = window.speechSynthesis;
-        if (!synth) {
-          resolve();
-          return;
-        }
-
-        const voices = typeof synth.getVoices === 'function' ? synth.getVoices() : [];
-        const viVoice = voices.find(
-          (v) =>
-            v.lang.toLowerCase().startsWith('vi') ||
-            v.lang.toLowerCase().replace('_', '-').includes('vi-vn') ||
-            v.name.toLowerCase().includes('vietnam')
-        );
-
-        if (!viVoice) {
-          // Zero English speech: play gentle chime instead of American accented gibberish
-          this.playIncenseChime();
-          resolve();
-          return;
-        }
-
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.voice = viVoice;
-        utter.lang = viVoice.lang || 'vi-VN';
-        utter.rate = 0.92;
-        utter.volume = Math.max(0, Math.min(1, this.settings.audioTtsVolume));
-        const timeout = setTimeout(() => resolve(), 10000);
-        utter.onend = () => {
-          clearTimeout(timeout);
-          resolve();
-        };
-        utter.onerror = () => {
-          clearTimeout(timeout);
-          resolve();
-        };
-        synth.speak(utter);
-      } catch {
+        this.currentAudio = null;
         resolve();
       }
     });

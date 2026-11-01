@@ -721,4 +721,149 @@ describe('8. Vietnamese Lunar Calendar, Community Prayer Registry & Cultural Tog
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  describe('10. Free Comments Reading, Live Event Debugger, Single Leader Election & Safe Reset', () => {
+    it('Free comments reading pipeline: enqueues TTS only when ttsReadFreeComments is true', () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'temple-free-comments-'));
+      const store = new SqlitePersistenceStore(path.join(tmpDir, 'test.sqlite'));
+      const tts = new PriorityTtsService({ cacheDir: tmpDir, synthesizeEnabled: false });
+      const engine = new TempleStateEngine({ store, tts });
+
+      // Initial state: ttsReadFreeComments is false by default
+      engine.updateSettings({ ttsReadFreeComments: false });
+
+      // Comment without ritual keyword:
+      const evt1: NormalizedLiveEvent = {
+        eventId: 'chat-free-1',
+        source: 'tiktok',
+        type: 'chat',
+        timestamp: Date.now(),
+        user: { id: 'u1', uniqueId: 'phattu1', nickname: 'Phật Tử Tâm An', avatarUrl: '' },
+        comment: 'Chúc đạo tràng buổi tối thanh tịnh'
+      };
+      engine.ingestEvent(evt1);
+
+      // Should NOT enqueue TTS
+      expect(tts.getQueueDepth()).toBe(0);
+      const trace1 = engine.getEventDebugger().getTrace('chat-free-1');
+      expect(trace1).toBeDefined();
+      expect(trace1?.stage).toBe('ACCEPTED');
+      expect(trace1?.reason).toContain('Chế độ đọc bình luận tự do đang TẮT');
+
+      // Turn ON free comments reading
+      engine.updateSettings({ ttsReadFreeComments: true });
+
+      const evt2: NormalizedLiveEvent = {
+        eventId: 'chat-free-2',
+        source: 'tiktok',
+        type: 'chat',
+        timestamp: Date.now() + 100,
+        user: { id: 'u2', uniqueId: 'phattu2', nickname: 'Diệu Hương', avatarUrl: '' },
+        comment: 'Chúc toàn thể quý Phật tử một ngày an lạc'
+      };
+      engine.ingestEvent(evt2);
+
+      // Should enqueue TTS
+      expect(tts.getQueueDepth()).toBe(1);
+      const trace2 = engine.getEventDebugger().getTrace('chat-free-2');
+      expect(trace2).toBeDefined();
+      expect(trace2?.stage).toBe('QUEUED');
+      expect(trace2?.ttsText).toContain('Chúc toàn thể quý Phật tử một ngày an lạc');
+
+      store.close();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('Safe Reset API: rejects invalid confirmation tokens and executes scoped resets', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'temple-reset-api-'));
+      const testStudio = await createStudioServer({
+        port: 0,
+        host: '127.0.0.1',
+        dataDir: tmpDir,
+        adminToken: 'test-reset-token',
+        synthesizeTtsEnabled: false
+      });
+      const baseUrl = `http://127.0.0.1:${testStudio.port}`;
+
+      try {
+        // 1. Try reset with lowercase 'reset' -> must fail HTTP 400
+        const failRes1 = await fetch(`${baseUrl}/api/admin/system/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Token': 'test-reset-token' },
+          body: JSON.stringify({ scope: 'session', confirmToken: 'reset' })
+        });
+        expect(failRes1.status).toBe(400);
+        const failJson1 = (await failRes1.json()) as any;
+        expect(failJson1.ok).toBe(false);
+        expect(failJson1.error).toContain('RESET');
+
+        // 2. Try reset with scope 'session' and exact 'RESET' -> must succeed
+        const sessionRes = await fetch(`${baseUrl}/api/admin/system/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Token': 'test-reset-token' },
+          body: JSON.stringify({ scope: 'session', confirmToken: 'RESET' })
+        });
+        expect(sessionRes.status).toBe(200);
+        const sessionJson = (await sessionRes.json()) as any;
+        expect(sessionJson.ok).toBe(true);
+        expect(sessionJson.scope).toBe('session');
+
+        // 3. Try scope 'config' with exact 'RESET' -> must succeed and backup config
+        const configRes = await fetch(`${baseUrl}/api/admin/system/reset`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Token': 'test-reset-token' },
+          body: JSON.stringify({ scope: 'config', confirmToken: 'RESET' })
+        });
+        expect(configRes.status).toBe(200);
+        const configJson = (await configRes.json()) as any;
+        expect(configJson.ok).toBe(true);
+        expect(configJson.scope).toBe('config');
+
+        // 4. Test Mock Chat endpoint /api/admin/events/mock-chat
+        const mockRes = await fetch(`${baseUrl}/api/admin/events/mock-chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Token': 'test-reset-token' },
+          body: JSON.stringify({ nickname: 'Tâm Bồ Đề', comment: 'Nam mô Bổn Sư Thích Ca Mâu Ni Phật' })
+        });
+        expect(mockRes.status).toBe(200);
+        const mockJson = (await mockRes.json()) as any;
+        expect(mockJson.ok).toBe(true);
+        expect(mockJson.traceId).toBeDefined();
+
+        // 5. Test Export Diagnostics endpoint /api/admin/diagnostics/export
+        const diagRes = await fetch(`${baseUrl}/api/admin/diagnostics/export`, {
+          headers: { 'X-Admin-Token': 'test-reset-token' }
+        });
+        expect(diagRes.status).toBe(200);
+        const diagJson = (await diagRes.json()) as any;
+        expect(diagJson.snapshot).toBeDefined();
+        expect(diagJson.system).toBeDefined();
+        expect(diagJson.eventTraces).toBeDefined();
+      } finally {
+        await testStudio.close();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('Audio leader election and strict Vietnamese TTS voice guard', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'temple-audio-guard-'));
+      const tts = new PriorityTtsService({ cacheDir: tmpDir, synthesizeEnabled: false });
+
+      // English voice is rejected and falls back to Vietnamese
+      const enVoice = (tts as any).sanitizeVoice('en-US-JennyNeural');
+      expect(enVoice.startsWith('vi-VN-')).toBe(true);
+
+      const viVoice = (tts as any).sanitizeVoice('vi-VN-HoaiMyNeural');
+      expect(viVoice).toBe('vi-VN-HoaiMyNeural');
+
+      // Test clearQueue
+      tts.enqueue({ text: 'Câu 1', priority: 1, voice: 'vi-VN-NamMinhNeural' });
+      tts.enqueue({ text: 'Câu 2', priority: 1, voice: 'vi-VN-NamMinhNeural' });
+      expect(tts.getQueueDepth()).toBe(2);
+      expect(tts.clearQueue()).toBe(2);
+      expect(tts.getQueueDepth()).toBe(0);
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+  });
 });

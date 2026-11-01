@@ -5,15 +5,16 @@ import type { TtsBroadcastPayload } from '../../shared/types.ts';
 
 export interface QueuedTtsItem {
   id: string;
-  userId: string;
+  userId?: string;
   text: string;
-  voice: 'vi-VN-NamMinhNeural' | 'vi-VN-HoaiMyNeural';
-  ratePercent: number;
-  pitchHz: number;
+  voice: 'vi-VN-NamMinhNeural' | 'vi-VN-HoaiMyNeural' | string;
+  ratePercent?: number;
+  pitchHz?: number;
   priority: number;
-  ttlMs: number;
+  ttlMs?: number;
   enqueuedAt: number;
   ritualId?: string;
+  traceId?: string;
 }
 
 /**
@@ -38,14 +39,22 @@ export class PriorityTtsService {
     maxQueueSize?: number;
     maxCacheFiles?: number;
     synthesizeEnabled?: boolean;
-    onReadyToBroadcast: (payload: TtsBroadcastPayload) => void;
+    onReadyToBroadcast?: (payload: TtsBroadcastPayload) => void;
   }) {
     this.cacheDir = options.cacheDir;
     this.maxQueueSize = options.maxQueueSize ?? 20;
     this.maxCacheFiles = options.maxCacheFiles ?? 80;
     this.synthesizeEnabled = options.synthesizeEnabled ?? true;
-    this.onReadyToBroadcast = options.onReadyToBroadcast;
+    this.onReadyToBroadcast = options.onReadyToBroadcast || (() => {});
     fs.mkdirSync(this.cacheDir, { recursive: true });
+  }
+
+  public sanitizeVoice(voice?: string): string {
+    const raw = String(voice || '').trim();
+    if (raw.startsWith('vi-VN-')) {
+      return raw;
+    }
+    return 'vi-VN-HoaiMyNeural';
   }
 
   public enqueue(item: Omit<QueuedTtsItem, 'id' | 'enqueuedAt'>): boolean {
@@ -84,6 +93,10 @@ export class PriorityTtsService {
     this.queue.push({
       ...item,
       text: cleanText,
+      voice: this.sanitizeVoice(item.voice),
+      ratePercent: item.ratePercent ?? -10,
+      pitchHz: item.pitchHz ?? -4,
+      ttlMs: item.ttlMs ?? 60_000,
       id: `tts_${now}_${++this.seq}`,
       enqueuedAt: now
     });
@@ -92,11 +105,22 @@ export class PriorityTtsService {
     return true;
   }
 
+  public clearQueue(): number {
+    const count = this.queue.length;
+    this.queue.length = 0;
+    return count;
+  }
+
+  public getQueueDepth(): number {
+    return this.queue.length;
+  }
+
   public evictExpired(now = Date.now()): number {
     let removed = 0;
     for (let i = this.queue.length - 1; i >= 0; i--) {
       const q = this.queue[i];
-      if (q.ttlMs > 0 && now - q.enqueuedAt > q.ttlMs) {
+      const ttl = q.ttlMs ?? 60_000;
+      if (ttl > 0 && now - q.enqueuedAt > ttl) {
         this.queue.splice(i, 1);
         this.droppedTotal++;
         removed++;
@@ -137,7 +161,8 @@ export class PriorityTtsService {
             audioUrl,
             voice: next.voice,
             priority: next.priority,
-            ritualId: next.ritualId
+            ritualId: next.ritualId,
+            traceId: next.traceId
           });
         }
       } finally {
@@ -148,14 +173,16 @@ export class PriorityTtsService {
 
   public async synthesize(options: {
     text: string;
-    voice?: 'vi-VN-NamMinhNeural' | 'vi-VN-HoaiMyNeural';
+    voice?: 'vi-VN-NamMinhNeural' | 'vi-VN-HoaiMyNeural' | string;
     ratePercent?: number;
     pitchHz?: number;
   }): Promise<string | null> {
     const cleanText = String(options.text || '').trim().slice(0, 360);
     if (!cleanText) return null;
 
-    const voice = options.voice || 'vi-VN-HoaiMyNeural';
+    // STRICT VIETNAMESE ONLY: Never synthesize or accept any non-vi-VN voice
+    const voice = this.sanitizeVoice(options.voice);
+
     const ratePercent = options.ratePercent ?? -10;
     const pitchHz = options.pitchHz ?? -4;
 
@@ -164,7 +191,7 @@ export class PriorityTtsService {
       .update(`${voice}|${ratePercent}|${pitchHz}|${cleanText}`)
       .digest('hex')
       .slice(0, 24);
-    const fileName = `tts_${hash}.mp3`;
+    const fileName = `tts_v2_${hash}.mp3`;
     const filePath = path.join(this.cacheDir, fileName);
 
     if (fs.existsSync(filePath)) {

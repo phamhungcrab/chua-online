@@ -1,9 +1,11 @@
+import child_process from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
+import { DEFAULT_EVENT_RULES, DEFAULT_SETTINGS } from '../shared/constants.ts';
 import {
   ConfigBundleExportSchema,
   EventActionRuleSchema,
@@ -52,6 +54,7 @@ const MIME_TYPES: Record<string, string> = {
 interface ExtendedWebSocket extends WebSocket {
   role: 'overlay' | 'admin';
   clientId: string;
+  isEligibleLeader?: boolean;
 }
 
 export interface StudioServerInstance {
@@ -142,8 +145,19 @@ export async function createStudioServer(options?: {
 
   const store = new SqlitePersistenceStore(dataDir);
 
+  let gitCommitShort = 'main';
+  try {
+    gitCommitShort = child_process
+      .execSync('git rev-parse --short HEAD', { timeout: 1000, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString('utf8')
+      .trim();
+  } catch {
+    // ignore
+  }
+
   let wss: WebSocketServer;
   let stateFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  let currentAudioLeaderId: string | null = null;
 
   function broadcastWs(msg: ServerToClientWsMessage, roleFilter?: 'overlay' | 'admin'): void {
     if (!wss || wss.clients.size === 0) return;
@@ -157,6 +171,31 @@ export async function createStudioServer(options?: {
           // ignore dead socket
         }
       }
+    }
+  }
+
+  function recomputeAudioLeader(): void {
+    if (!wss) return;
+    let foundCurrent = false;
+    let candidate: string | null = null;
+    for (const c of wss.clients) {
+      const ext = c as ExtendedWebSocket;
+      if (ext.readyState === WebSocket.OPEN && ext.role === 'overlay' && ext.isEligibleLeader) {
+        if (ext.clientId === currentAudioLeaderId) {
+          foundCurrent = true;
+          break;
+        }
+        if (!candidate) candidate = ext.clientId;
+      }
+    }
+    const nextLeader = foundCurrent ? currentAudioLeaderId : candidate;
+    if (nextLeader !== currentAudioLeaderId) {
+      currentAudioLeaderId = nextLeader;
+      broadcastWs({
+        type: 'audioLeaderUpdate',
+        leaderClientId: currentAudioLeaderId
+      });
+      scheduleSnapshotBroadcast();
     }
   }
 
@@ -175,6 +214,10 @@ export async function createStudioServer(options?: {
     cacheDir: ttsCacheDir,
     synthesizeEnabled: options?.synthesizeTtsEnabled ?? true,
     onReadyToBroadcast: (ttsPayload) => {
+      if (ttsPayload.traceId) {
+        engine.getEventDebugger().markSynthesized(ttsPayload.traceId, ttsPayload.audioUrl);
+      }
+      ttsPayload.leaderClientId = currentAudioLeaderId;
       broadcastWs({
         type: 'tts',
         tts: ttsPayload
@@ -218,6 +261,16 @@ export async function createStudioServer(options?: {
     }
   });
 
+  engine.getEventDebugger().onTraceUpdate((trace) => {
+    broadcastWs(
+      {
+        type: 'eventTrace',
+        trace
+      },
+      'admin'
+    );
+  });
+
   const simulator = new OfflineEventSimulator((evt) => {
     engine.ingestEvent(evt);
   });
@@ -237,7 +290,10 @@ export async function createStudioServer(options?: {
   });
 
   function getFullSnapshot(): TempleStateSnapshot {
-    return engine.getSnapshot(connector.getStatus(), simulator.getStatus());
+    const snap = engine.getSnapshot(connector.getStatus(), simulator.getStatus());
+    snap.audioLeaderClientId = currentAudioLeaderId;
+    snap.gitCommit = gitCommitShort;
+    return snap;
   }
 
   let activePort = requestedPort;
@@ -326,7 +382,38 @@ export async function createStudioServer(options?: {
       return;
     }
 
-    // 2. Audio Upload Endpoint (Binary Multipart/Stream)
+    if (req.method === 'GET' && (pathname === '/api/admin/diagnostics/export' || pathname === '/api/diagnostics/export')) {
+      const snap = getFullSnapshot();
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="temple-diagnostics-${Date.now()}.json"`
+      });
+      res.end(
+        JSON.stringify(
+          {
+            version: '1.0.0',
+            exportedAt: new Date().toISOString(),
+            gitCommit: gitCommitShort,
+            system: {
+              platform: process.platform,
+              nodeVersion: process.version,
+              uptimeSec: snap.uptimeSec,
+              audioLeaderClientId: currentAudioLeaderId
+            },
+            snapshot: snap,
+            eventTraces: snap.eventTraces || [],
+            traces: snap.eventTraces || [],
+            metrics: snap.metrics,
+            settings: snap.settings,
+            rules: snap.rules,
+            clientPerf: snap.clientPerf
+          },
+          null,
+          2
+        )
+      );
+      return;
+    }
     if (pathname === '/api/admin/audio/upload' && req.method === 'POST') {
       const headerToken = String(req.headers['x-admin-token'] || '');
       if (headerToken !== adminToken) {
@@ -416,7 +503,8 @@ export async function createStudioServer(options?: {
           connector,
           store,
           tts,
-          getFullSnapshot
+          getFullSnapshot,
+          broadcastWs
         });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true, ...result }));
@@ -536,6 +624,10 @@ export async function createStudioServer(options?: {
       requestedRole === 'admin' && tokenParam === adminToken ? 'admin' : 'overlay';
     ext.clientId = `client_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
+    const mutedParam = url.searchParams.get('muted');
+    ext.isEligibleLeader = ext.role === 'overlay' && mutedParam !== '1';
+    recomputeAudioLeader();
+
     ext.send(
       JSON.stringify({
         type: 'snapshot',
@@ -543,10 +635,27 @@ export async function createStudioServer(options?: {
       } satisfies ServerToClientWsMessage)
     );
 
+    ext.on('close', () => {
+      if (ext.clientId === currentAudioLeaderId) {
+        currentAudioLeaderId = null;
+        recomputeAudioLeader();
+      }
+    });
+
     ext.on('message', async (rawBuf) => {
       try {
         const msg = JSON.parse(rawBuf.toString('utf8'));
         if (!msg || typeof msg !== 'object') return;
+
+        if (msg.type === 'tracePlaybackStart' && msg.traceId) {
+          engine.getEventDebugger().markPlaying(msg.traceId, currentAudioLeaderId);
+          return;
+        }
+
+        if (msg.type === 'tracePlaybackEnd' && msg.traceId) {
+          engine.getEventDebugger().markCompleted(msg.traceId);
+          return;
+        }
 
         // Overlay clients can only report lightweight performance telemetry
         if (msg.type === 'perf' && msg.report) {
@@ -619,6 +728,7 @@ async function handleAdminAction(
     store: SqlitePersistenceStore;
     tts: PriorityTtsService;
     getFullSnapshot: () => TempleStateSnapshot;
+    broadcastWs: (msg: ServerToClientWsMessage, roleFilter?: 'overlay' | 'admin') => void;
   }
 ): Promise<Record<string, any>> {
   switch (pathname) {
@@ -793,6 +903,89 @@ async function handleAdminAction(
       const pitchHz = Number(body.pitchHz ?? -4);
       const audioUrl = await ctx.tts.synthesize({ text, voice, ratePercent, pitchHz });
       return { audioUrl, text };
+    }
+
+    case '/api/admin/system/reset': {
+      const scope = String(body.scope || 'session');
+      const confirmation = String(body.confirmation || body.confirmToken || '').trim();
+      if (confirmation !== 'RESET') {
+        throw new Error('Từ khóa xác nhận không đúng. Vui lòng nhập chính xác "RESET" (viết hoa toàn bộ).');
+      }
+
+      if (scope === 'session') {
+        ctx.engine.resetTransientState();
+        ctx.broadcastWs({ type: 'stopAudio' });
+        ctx.broadcastWs({ type: 'clearTtsQueue' });
+        return {
+          ok: true,
+          scope,
+          message: 'Đã đặt lại phiên hiện tại: dọn sạch hàng đợi TTS, reset trạng thái tạm và bộ đếm.',
+          snapshot: ctx.getFullSnapshot()
+        };
+      } else if (scope === 'config') {
+        ctx.store.createBackupSnapshot();
+        ctx.engine.updateSettings(DEFAULT_SETTINGS);
+        ctx.store.saveRules([...DEFAULT_EVENT_RULES]);
+        ctx.engine.importConfigBundle({ settings: DEFAULT_SETTINGS, rules: [...DEFAULT_EVENT_RULES] });
+        return {
+          ok: true,
+          scope,
+          message: 'Đã khôi phục cài đặt Chánh Điện và các quy tắc sự kiện về mặc định (đã tự động sao lưu).',
+          snapshot: ctx.getFullSnapshot()
+        };
+      } else if (scope === 'factory') {
+        const backupPath = ctx.store.createBackupSnapshot();
+        ctx.engine.updateSettings(DEFAULT_SETTINGS);
+        ctx.store.saveRules([...DEFAULT_EVENT_RULES]);
+        ctx.engine.resetSession();
+        return {
+          ok: true,
+          scope,
+          backupPath,
+          message: 'Đã khôi phục cài đặt gốc và tạo checkpoint sao lưu dữ liệu an toàn.',
+          snapshot: ctx.getFullSnapshot()
+        };
+      } else {
+        throw new Error(`Phạm vi reset không hợp lệ: ${scope}`);
+      }
+    }
+
+    case '/api/admin/audio/stop': {
+      ctx.broadcastWs({ type: 'stopAudio' });
+      return { ok: true, message: 'Đã gửi lệnh ngắt âm thanh phát trực tiếp trên tất cả nguồn Overlay' };
+    }
+
+    case '/api/admin/audio/clear-queue': {
+      const cleared = ctx.tts.clearQueue();
+      ctx.broadcastWs({ type: 'clearTtsQueue' });
+      return { ok: true, cleared, message: `Đã xóa sạch ${cleared} lượt đọc trong hàng đợi TTS` };
+    }
+
+    case '/api/admin/audio/restart-engine': {
+      ctx.broadcastWs({ type: 'restartAudioEngine' });
+      return { ok: true, message: 'Đã gửi tín hiệu khởi động lại audio engine trên Overlay' };
+    }
+
+    case '/api/admin/events/mock-chat': {
+      const comment = String(body.comment || 'Nam mô A Di Đà Phật, con cầu cho gia đình mạnh khỏe').slice(0, 200);
+      const nickname = String(body.nickname || 'Phật Tử Tâm An').slice(0, 40);
+      const uniqueId = String(body.uniqueId || 'tam_an_test').slice(0, 40);
+      const raw: Record<string, any> = {
+        user: { id: uniqueId, uniqueId, nickname },
+        comment
+      };
+      const evt = normalizeRawTikTokEvent('chat', raw, 'admin');
+      const ritual = ctx.engine.ingestEvent(evt);
+      const traces = ctx.engine.getEventDebugger().getRecentTraces(10);
+      return {
+        ok: true,
+        comment,
+        nickname,
+        ritual,
+        trace: traces[0],
+        traceId: traces[0]?.traceId,
+        snapshot: ctx.getFullSnapshot()
+      };
     }
 
     default:

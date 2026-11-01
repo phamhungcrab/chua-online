@@ -352,6 +352,36 @@ export interface ClientPerfReport {
   reportedAt: number;
 }
 
+export type TraceStage =
+  | 'RECEIVED'
+  | 'ACCEPTED'
+  | 'QUEUED'
+  | 'SYNTHESIZED'
+  | 'PLAYING'
+  | 'COMPLETED'
+  | 'DROPPED';
+
+export interface EventTraceItem {
+  traceId: string;
+  eventId: string;
+  timestamp: number;
+  receivedAt: number;
+  source: 'tiktok' | 'simulator' | 'admin';
+  type: RawLiveEventType;
+  user: { id: string; nickname: string; uniqueId?: string };
+  rawContent: string;
+  stage: TraceStage;
+  reason?: string;
+  ttsVoice?: string;
+  ttsText?: string;
+  audioUrl?: string | null;
+  leaderClientId?: string | null;
+  latencyMs?: number;
+  updatedAt: number;
+}
+
+export type SystemResetScope = 'session' | 'config' | 'factory';
+
 export interface TempleStateSnapshot {
   startedAt: number;
   uptimeSec: number;
@@ -379,6 +409,9 @@ export interface TempleStateSnapshot {
   clientPerf: ClientPerfReport[];
   lunarInfo: LunarDateResult;
   prayers: PrayerRegistryItem[];
+  eventTraces?: EventTraceItem[];
+  audioLeaderClientId?: string | null;
+  gitCommit?: string;
 }
 
 export interface TtsBroadcastPayload {
@@ -388,6 +421,8 @@ export interface TtsBroadcastPayload {
   voice: string;
   priority: number;
   ritualId?: string;
+  leaderClientId?: string | null;
+  traceId?: string;
 }
 
 export type ServerToClientWsMessage =
@@ -398,6 +433,12 @@ export type ServerToClientWsMessage =
   | { type: 'statePatch'; patch: Partial<TempleStateSnapshot> }
   | { type: 'prayer'; prayer: PrayerRegistryItem }
   | { type: 'tts'; tts: TtsBroadcastPayload }
+  | { type: 'eventTrace'; trace: EventTraceItem }
+  | { type: 'eventTraceBatch'; traces: EventTraceItem[] }
+  | { type: 'audioLeaderUpdate'; leaderClientId: string | null }
+  | { type: 'stopAudio' }
+  | { type: 'clearTtsQueue' }
+  | { type: 'restartAudioEngine' }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string; timestamp: string };
 
 export interface ITikTokConnector {

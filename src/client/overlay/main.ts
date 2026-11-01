@@ -314,10 +314,24 @@ function playRitualSfx(ritual: DispatchedRitual): void {
 // 5. WebSocket Client with Auto-Reconnect & State Resync
 let ws: WebSocket | null = null;
 let wsReconnectAttempt = 0;
+let myClientId: string | null = null;
+
+audio.onPlaybackStarted = (traceId) => {
+  if (ws && ws.readyState === WebSocket.OPEN && traceId) {
+    ws.send(JSON.stringify({ type: 'tracePlaybackStart', traceId }));
+  }
+};
+
+audio.onPlaybackFinished = (traceId) => {
+  if (ws && ws.readyState === WebSocket.OPEN && traceId) {
+    ws.send(JSON.stringify({ type: 'tracePlaybackEnd', traceId }));
+  }
+};
 
 function connectWebSocket(): void {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${window.location.host}/ws?role=overlay`);
+  const query = `role=overlay&muted=${isMutedMode ? '1' : '0'}`;
+  ws = new WebSocket(`${proto}//${window.location.host}/ws?${query}`);
 
   ws.onopen = () => {
     wsReconnectAttempt = 0;
@@ -325,13 +339,31 @@ function connectWebSocket(): void {
 
   ws.onmessage = (ev) => {
     try {
-      if (!isMutedMode) {
+      if (!isMutedMode && audio.getIsAudioLeader()) {
         audio.unlock(); // Ensure Web Audio unlocks on incoming server events for OBS
       }
       const msg = JSON.parse(String(ev.data)) as ServerToClientWsMessage;
       switch (msg.type) {
         case 'snapshot':
           applyFullSnapshot(msg.snapshot);
+          if (msg.snapshot.audioLeaderClientId && myClientId) {
+            audio.setAudioLeader(msg.snapshot.audioLeaderClientId === myClientId);
+          }
+          break;
+        case 'audioLeaderUpdate':
+          if (myClientId) {
+            audio.setAudioLeader(msg.leaderClientId === myClientId);
+          }
+          break;
+        case 'stopAudio':
+          audio.stopCurrentAudio();
+          break;
+        case 'clearTtsQueue':
+          audio.clearTtsQueue();
+          break;
+        case 'restartAudioEngine':
+          audio.stopCurrentAudio();
+          audio.clearTtsQueue();
           break;
         case 'prayer': {
           const p = msg.prayer;
@@ -349,7 +381,7 @@ function connectWebSocket(): void {
           break;
         case 'likeBatch':
           scene.triggerLikeBatchVisuals(msg.count);
-          if (!isMutedMode) audio.playWoodenFish(1.02);
+          if (!isMutedMode && audio.getIsAudioLeader()) audio.playWoodenFish(1.02);
           break;
         case 'tts':
           if (!isMutedMode) audio.enqueueTts(msg.tts);
