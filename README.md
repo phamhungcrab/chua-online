@@ -105,6 +105,9 @@ npm run qa:visual
 
 ## 📂 Tài liệu Kỹ thuật Chi tiết
 
+- [Báo Cáo Sẵn Sàng Phát Sóng TikTok LIVE (`docs/LIVE_READINESS_REPORT.md`)](file:///e:/tiktok/docs/LIVE_READINESS_REPORT.md)
+- [Thẩm Định Tính Chuẩn Xác Văn Hóa & Nghi Thức Việt Nam (`docs/CULTURAL_ACCURACY_REVIEW.md`)](file:///e:/tiktok/docs/CULTURAL_ACCURACY_REVIEW.md)
+- [Báo Cáo So Sánh Nâng Cấp Mỹ Thuật 2.5D (`docs/VISUAL_COMPARISON.md`)](file:///e:/tiktok/docs/VISUAL_COMPARISON.md)
 - [Báo cáo Kiểm toán 15 Repository Tham khảo (`docs/REPOSITORY_AUDIT.md`)](file:///e:/tiktok/docs/REPOSITORY_AUDIT.md)
 - [Kiến trúc Hệ thống 10 Module (`docs/ARCHITECTURE.md`)](file:///e:/tiktok/docs/ARCHITECTURE.md)
 - [Định hướng Mỹ thuật & Đồ họa 2.5D (`docs/ART_DIRECTION.md`)](file:///e:/tiktok/docs/ART_DIRECTION.md)

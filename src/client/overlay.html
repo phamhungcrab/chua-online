@@ -448,6 +448,39 @@
       border-radius: 999px;
       border: 1px solid rgba(229, 184, 91, 0.25);
     }
+
+    /* 7. Community Prayer Registry Ticker */
+    .prayer-ticker {
+      position: absolute;
+      left: 36px;
+      right: 36px;
+      bottom: 46px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 20px;
+      border-radius: 999px;
+      background: rgba(26, 10, 5, 0.88);
+      border: 1.5px solid var(--gold-border);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+      font-size: 16px;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .prayer-ticker .prayer-icon {
+      color: var(--gold-bright);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    #prayerTickerText {
+      color: var(--text-parchment);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -487,6 +520,10 @@
           <div class="stat-pill">
             <span>⏱</span>
             <span id="pillTimer">00:00:00</span>
+          </div>
+          <div class="stat-pill" id="pillLunarWrap">
+            <span id="pillLunarIcon">🌙</span>
+            <span id="pillLunar">Âm lịch</span>
           </div>
         </div>
 
@@ -530,6 +567,12 @@
           <div id="modalBody">Nguyện cầu gia đạo bình an, vạn sự cát tường</div>
           <div id="modalSubnote"></div>
         </section>
+
+        <!-- Community Prayer Registry Ticker -->
+        <div id="prayerTicker" class="prayer-ticker">
+          <span class="prayer-icon">📜 Sổ Lời Nguyện:</span>
+          <span id="prayerTickerText">Đang ghi nhận lời nguyện cầu an từ phòng LIVE…</span>
+        </div>
 
         <!-- Audio Unlock Button -->
         <button id="btnEnableAudio" type="button">🔔 Chạm để bật Âm Thanh Chánh Điện &amp; Giọng Đọc</button>

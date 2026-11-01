@@ -44,6 +44,8 @@ const previewSeatedCountEl = document.getElementById('previewSeatedCount')!;
 const connectorDetailEl = document.getElementById('connectorDetail')!;
 
 const inpTikTokUser = document.getElementById('inpTikTokUser') as HTMLInputElement;
+const btnVerifyTikTok = document.getElementById('btnVerifyTikTok') as HTMLButtonElement | null;
+const verifyResultEl = document.getElementById('verifyResult');
 const inpSimName = document.getElementById('inpSimName') as HTMLInputElement;
 const inpSimWish = document.getElementById('inpSimWish') as HTMLInputElement;
 
@@ -58,6 +60,24 @@ const rngSmoke = document.getElementById('rngSmoke') as HTMLInputElement;
 const rngPetal = document.getElementById('rngPetal') as HTMLInputElement;
 const lblSmoke = document.getElementById('lblSmoke')!;
 const lblPetal = document.getElementById('lblPetal')!;
+
+const chkFortune = document.getElementById('chkFortune') as HTMLInputElement;
+const chkFlowerOffering = document.getElementById('chkFlowerOffering') as HTMLInputElement;
+const chkSafeZones = document.getElementById('chkSafeZones') as HTMLInputElement;
+const chkLunarFestival = document.getElementById('chkLunarFestival') as HTMLInputElement;
+const chkIdleSerene = document.getElementById('chkIdleSerene') as HTMLInputElement;
+const chkPrayers = document.getElementById('chkPrayers') as HTMLInputElement;
+
+const btnTrigFlower = document.getElementById('btnTrigFlower') as HTMLButtonElement | null;
+const btnTrigSerene = document.getElementById('btnTrigSerene') as HTMLButtonElement | null;
+
+const liveEventStream = document.getElementById('liveEventStream')!;
+const livePrayerRegistry = document.getElementById('livePrayerRegistry')!;
+const btnClearLiveLogs = document.getElementById('btnClearLiveLogs')!;
+const btnFilterAll = document.getElementById('btnFilterAll')!;
+const btnFilterComment = document.getElementById('btnFilterComment')!;
+const btnFilterGift = document.getElementById('btnFilterGift')!;
+const btnFilterHeart = document.getElementById('btnFilterHeart')!;
 
 const rngMasterVol = document.getElementById('rngMasterVol') as HTMLInputElement;
 const rngMusicVol = document.getElementById('rngMusicVol') as HTMLInputElement;
@@ -111,6 +131,13 @@ function renderSnapshot(snap: TempleStateSnapshot): void {
     lblSmoke.textContent = snap.settings.smokeDensity.toFixed(1);
     lblPetal.textContent = snap.settings.petalDensity.toFixed(1);
 
+    chkFortune.checked = Boolean(snap.settings.fortuneEnabled);
+    chkFlowerOffering.checked = Boolean(snap.settings.flowerOfferingEnabled);
+    chkSafeZones.checked = Boolean(snap.settings.showSafeZones);
+    chkLunarFestival.checked = Boolean(snap.settings.lunarFestivalAuto);
+    chkIdleSerene.checked = Boolean(snap.settings.idleSereneChimes);
+    chkPrayers.checked = Boolean(snap.settings.collectivePrayersEnabled);
+
     rngMasterVol.value = String(snap.settings.audioMasterVolume);
     rngMusicVol.value = String(snap.settings.audioMusicVolume);
     rngSfxVol.value = String(snap.settings.audioSfxVolume);
@@ -121,6 +148,18 @@ function renderSnapshot(snap: TempleStateSnapshot): void {
     lblTtsVol.textContent = `${Math.round(snap.settings.audioTtsVolume * 100)}%`;
     selTtsVoice.value = snap.settings.ttsVoice;
     inpMoBpm.value = String(snap.settings.woodenFishBpm);
+  }
+
+  if (snap.prayers && snap.prayers.length > 0) {
+    livePrayerRegistry.replaceChildren();
+    for (const p of snap.prayers.slice(0, 30)) {
+      const row = document.createElement('div');
+      row.style.borderBottom = '1px solid rgba(229,184,91,0.15)';
+      row.style.paddingBottom = '4px';
+      const timeStr = new Date(p.createdAt).toLocaleTimeString('vi-VN');
+      row.innerHTML = `<span style="color:var(--gold-bright); font-weight:600;">[${p.category}]</span> <b style="color:var(--text);">${p.nickname}</b> <span style="color:var(--muted); font-size:11px;">(${timeStr})</span>: <span style="font-style:italic;">"${p.wishText}"</span>`;
+      livePrayerRegistry.appendChild(row);
+    }
   }
 
   renderRulesTable(snap.rules);
@@ -324,7 +363,13 @@ document.getElementById('btnSaveSceneSettings')!.onclick = async () => {
       qualityPreset: selQuality.value,
       targetFps: Number(selTargetFps.value),
       smokeDensity: Number(rngSmoke.value),
-      petalDensity: Number(rngPetal.value)
+      petalDensity: Number(rngPetal.value),
+      fortuneEnabled: chkFortune.checked,
+      flowerOfferingEnabled: chkFlowerOffering.checked,
+      showSafeZones: chkSafeZones.checked,
+      lunarFestivalAuto: chkLunarFestival.checked,
+      idleSereneChimes: chkIdleSerene.checked,
+      collectivePrayersEnabled: chkPrayers.checked
     });
     renderSnapshot(res.snapshot);
     showToast('Đã lưu và đồng bộ cấu hình Chánh Điện');
@@ -373,6 +418,100 @@ document.getElementById('btnExportConfig')!.onclick = () => {
   window.open('/api/config/export', '_blank');
 };
 
+if (btnVerifyTikTok) {
+  btnVerifyTikTok.onclick = async () => {
+    try {
+      if (verifyResultEl) verifyResultEl.textContent = 'Đang kiểm tra phòng LIVE...';
+      const res = await callAdminApi('/api/admin/tiktok/verify', { uniqueId: inpTikTokUser.value });
+      if (verifyResultEl) {
+        if (res.verified) {
+          verifyResultEl.style.color = 'var(--gold-bright)';
+          verifyResultEl.textContent = `✓ Kênh @${res.uniqueId} đang LIVE! Room ID: ${res.roomId}`;
+        } else {
+          verifyResultEl.style.color = 'var(--danger)';
+          verifyResultEl.textContent = `✗ Kênh @${res.uniqueId} không online: ${res.message}`;
+        }
+      }
+    } catch (e: any) {
+      if (verifyResultEl) {
+        verifyResultEl.style.color = 'var(--danger)';
+        verifyResultEl.textContent = `Lỗi: ${e.message}`;
+      }
+    }
+  };
+}
+
+if (btnTrigFlower) {
+  btnTrigFlower.onclick = async () => {
+    const res = await callAdminApi('/api/admin/ritual/flowers', {
+      nickname: inpSimName.value || 'Diệu Hạnh',
+      wishText: inpSimWish.value || 'Cung kính dâng hoa cúng Phật'
+    });
+    renderSnapshot(res.snapshot);
+    showToast('Đã khởi lễ Dâng Hoa Sen Tươi');
+  };
+}
+
+if (btnTrigSerene) {
+  btnTrigSerene.onclick = async () => {
+    const res = await callAdminApi('/api/admin/ritual/serene');
+    renderSnapshot(res.snapshot);
+    showToast('Đã thỉnh Chuông Mõ Thanh Tịnh');
+  };
+}
+
+// Live Event Stream Filter & Appender
+type EventFilterCategory = 'all' | 'comment' | 'gift' | 'heart';
+let currentFilter: EventFilterCategory = 'all';
+
+function setFilter(cat: EventFilterCategory, activeBtn: HTMLElement): void {
+  currentFilter = cat;
+  [btnFilterAll, btnFilterComment, btnFilterGift, btnFilterHeart].forEach((b) => b.classList.remove('gold'));
+  activeBtn.classList.add('gold');
+  filterLogs();
+}
+
+btnFilterAll.onclick = () => setFilter('all', btnFilterAll);
+btnFilterComment.onclick = () => setFilter('comment', btnFilterComment);
+btnFilterGift.onclick = () => setFilter('gift', btnFilterGift);
+btnFilterHeart.onclick = () => setFilter('heart', btnFilterHeart);
+
+btnClearLiveLogs.onclick = () => {
+  liveEventStream.replaceChildren();
+  const empty = document.createElement('div');
+  empty.style.color = 'var(--muted)';
+  empty.style.fontStyle = 'italic';
+  empty.textContent = 'Đã xóa log sự kiện...';
+  liveEventStream.appendChild(empty);
+};
+
+function appendLiveLog(cat: EventFilterCategory, badge: string, content: string): void {
+  const item = document.createElement('div');
+  item.className = 'live-log-item';
+  item.setAttribute('data-cat', cat);
+  item.style.padding = '4px 6px';
+  item.style.borderRadius = '6px';
+  item.style.background = 'rgba(255,255,255,0.04)';
+  item.style.display = currentFilter === 'all' || currentFilter === cat ? 'block' : 'none';
+
+  const timeStr = new Date().toLocaleTimeString('vi-VN');
+  item.innerHTML = `<span style="color:var(--muted); font-size:11px;">[${timeStr}]</span> <span style="color:var(--gold-bright); font-weight:600;">${badge}</span> ${content}`;
+
+  if (liveEventStream.children.length > 50) {
+    liveEventStream.removeChild(liveEventStream.children[0]);
+  }
+  liveEventStream.appendChild(item);
+  liveEventStream.scrollTop = liveEventStream.scrollHeight;
+}
+
+function filterLogs(): void {
+  const items = liveEventStream.querySelectorAll<HTMLElement>('.live-log-item');
+  items.forEach((item) => {
+    const cat = item.getAttribute('data-cat');
+    item.style.display = currentFilter === 'all' || currentFilter === cat ? 'block' : 'none';
+  });
+}
+
 // Connect Admin WebSocket for real-time state updates
 function connectAdminWs(): void {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -384,6 +523,27 @@ function connectAdminWs(): void {
       const msg = JSON.parse(String(ev.data)) as ServerToClientWsMessage;
       if (msg.type === 'snapshot') {
         renderSnapshot(msg.snapshot);
+      } else if (msg.type === 'ritual') {
+        const r = msg.ritual;
+        const cat =
+          r.actionType === 'OFFER_GIFT' || r.actionType === 'GRAND_CEREMONY' || r.actionType === 'OFFER_FLOWERS'
+            ? 'gift'
+            : r.actionType === 'STRIKE_WOODEN_FISH'
+              ? 'heart'
+              : 'comment';
+        const badge = r.giftName ? `🎁 [${r.giftName}]` : `✦ [${r.ruleName}]`;
+        appendLiveLog(cat, badge, `<b>${r.user.nickname}</b>: ${r.wishText || ''} (+${r.meritAwarded} Tinh Tấn)`);
+      } else if (msg.type === 'prayer') {
+        const p = msg.prayer;
+        appendLiveLog('comment', `📜 [Sổ Nguyện: ${p.category}]`, `<b>${p.nickname}</b>: “${p.wishText}”`);
+        const row = document.createElement('div');
+        row.style.borderBottom = '1px solid rgba(229,184,91,0.15)';
+        row.style.paddingBottom = '4px';
+        const timeStr = new Date(p.createdAt).toLocaleTimeString('vi-VN');
+        row.innerHTML = `<span style="color:var(--gold-bright); font-weight:600;">[${p.category}]</span> <b style="color:var(--text);">${p.nickname}</b> <span style="color:var(--muted); font-size:11px;">(${timeStr})</span>: <span style="font-style:italic;">"${p.wishText}"</span>`;
+        livePrayerRegistry.prepend(row);
+      } else if (msg.type === 'likeBatch') {
+        appendLiveLog('heart', '❤️ [Thả Tim]', `Nhận batch <b>${msg.count}</b> tim -> Gõ Mõ`);
       }
     } catch {
       // ignore

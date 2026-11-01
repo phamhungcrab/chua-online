@@ -6,6 +6,7 @@ import type {
   DispatchedRitual,
   EventActionRule,
   OfferingKind,
+  PrayerRegistryItem,
   SeatedViewer,
   TempleSettings
 } from '../../shared/types.ts';
@@ -83,6 +84,16 @@ export class SqlitePersistenceStore {
         nickname TEXT NOT NULL,
         merit_awarded INTEGER NOT NULL,
         payload_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS prayer_registry (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        nickname TEXT NOT NULL,
+        wish_text TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'BÌNH AN',
+        merit_awarded INTEGER NOT NULL DEFAULT 5,
         created_at INTEGER NOT NULL
       );
     `);
@@ -253,8 +264,58 @@ export class SqlitePersistenceStore {
     `);
   }
 
+  public logPrayer(prayer: PrayerRegistryItem): void {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO prayer_registry (id, user_id, nickname, wish_text, category, merit_awarded, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        prayer.id,
+        prayer.userId,
+        prayer.nickname,
+        prayer.wishText,
+        prayer.category,
+        prayer.meritAwarded,
+        prayer.createdAt
+      );
+
+    // Keep bounded to last 500 prayers
+    this.db.exec(`
+      DELETE FROM prayer_registry WHERE id NOT IN (
+        SELECT id FROM prayer_registry ORDER BY created_at DESC LIMIT 500
+      );
+    `);
+  }
+
+  public loadRecentPrayers(limit = 40): PrayerRegistryItem[] {
+    const rows = this.db
+      .prepare(
+        'SELECT id, user_id, nickname, wish_text, category, merit_awarded, created_at FROM prayer_registry ORDER BY created_at DESC LIMIT ?'
+      )
+      .all(limit) as Array<{
+        id: string;
+        user_id: string;
+        nickname: string;
+        wish_text: string;
+        category: string;
+        merit_awarded: number;
+        created_at: number;
+      }>;
+
+    return rows.map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      nickname: r.nickname,
+      wishText: r.wish_text,
+      category: (r.category as any) || 'BÌNH AN',
+      meritAwarded: Number(r.merit_awarded),
+      createdAt: Number(r.created_at)
+    }));
+  }
+
   public resetSessionData(): PersistedTotals {
-    this.db.exec(`DELETE FROM viewers; DELETE FROM ritual_logs;`);
+    this.db.exec(`DELETE FROM viewers; DELETE FROM ritual_logs; DELETE FROM prayer_registry;`);
     const fresh: PersistedTotals = {
       meritPoints: 0,
       incenseBurned: 9,

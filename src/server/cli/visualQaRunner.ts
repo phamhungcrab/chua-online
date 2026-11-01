@@ -149,6 +149,17 @@ async function runVisualQa(): Promise<void> {
     await overlayPage.screenshot({ path: fortuneShotPath, fullPage: false });
     console.log(`[VisualQA] Saved screenshot: ${fortuneShotPath}`);
 
+    // Trigger Flower Offering Ceremony ("Dâng Hoa Sen Cúng Phật")
+    await postAdmin('/api/admin/ritual/flowers', {
+      nickname: 'Diệu Hương 🪷',
+      wishText: 'Cung kính dâng hoa sen tươi lên Đức Bổn Sư Thích Ca Mâu Ni Phật'
+    });
+    await overlayPage.waitForTimeout(1400);
+
+    const flowerShotPath = path.join(screenshotsDir, 'overlay-1080x1920-flower-offering.png');
+    await overlayPage.screenshot({ path: flowerShotPath, fullPage: false });
+    console.log(`[VisualQA] Saved screenshot: ${flowerShotPath}`);
+
     // Switch ambience to GOLDEN_DUSK + LOTUS_RAIN and capture
     await postAdmin('/api/admin/settings', {
       timeOfDay: 'GOLDEN_DUSK',
@@ -159,6 +170,18 @@ async function runVisualQa(): Promise<void> {
     const dawnShotPath = path.join(screenshotsDir, 'overlay-1080x1920-dawn-petals.png');
     await overlayPage.screenshot({ path: dawnShotPath, fullPage: false });
     console.log(`[VisualQA] Saved screenshot: ${dawnShotPath}`);
+
+    // Capture with TikTok Safe Zone Guide lines visible
+    await postAdmin('/api/admin/settings', {
+      showSafeZones: true
+    });
+    await overlayPage.waitForTimeout(600);
+    const safeZoneShotPath = path.join(screenshotsDir, 'overlay-1080x1920-safezone.png');
+    await overlayPage.screenshot({ path: safeZoneShotPath, fullPage: false });
+    console.log(`[VisualQA] Saved screenshot: ${safeZoneShotPath}`);
+    await postAdmin('/api/admin/settings', {
+      showSafeZones: false
+    });
 
     // Measure actual render FPS over 90 animation frames inside the browser
     const fpsMetrics = await overlayPage.evaluate(async () => {

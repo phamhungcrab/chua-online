@@ -26,6 +26,7 @@ import { SqlitePersistenceStore } from '../src/server/persistence/sqliteStore.ts
 import { PriorityTtsService } from '../src/server/audio/ttsService.ts';
 import { TempleStateEngine } from '../src/server/state/templeStateEngine.ts';
 import { createStudioServer } from '../src/server/httpServer.ts';
+import { getVietnameseLunarInfo } from '../src/server/utils/lunarCalendar.ts';
 import { DEFAULT_EVENT_RULES } from '../src/shared/constants.ts';
 import type { ConnectorStatus, NormalizedLiveEvent, SimulatorStatus } from '../src/shared/types.ts';
 
@@ -485,5 +486,115 @@ describe('5. HTTP & WebSocket Server Security, Auth & End-to-End Integration', (
     expect(stateJson.ok).toBe(true);
     expect(stateJson.snapshot.seatedViewers.length).toBeGreaterThan(0);
     expect(stateJson.snapshot.metrics.eventsAcceptedTotal).toBeGreaterThan(30);
+  });
+});
+
+describe('8. Vietnamese Lunar Calendar, Community Prayer Registry & Cultural Toggles', () => {
+  it('accurately computes Vietnamese Lunar dates, Can Chi years and major Buddhist festivals (Vesak, Vu Lan)', () => {
+    // 2026-05-31 is Vesak 15/4 lunar
+    const vesakDate = new Date('2026-05-31T07:00:00+07:00');
+    const vesakInfo = getVietnameseLunarInfo(vesakDate);
+    expect(vesakInfo.lunarDay).toBe(15);
+    expect(vesakInfo.lunarMonth).toBe(4);
+    expect(vesakInfo.canChiYear).toBe('Bính Ngọ');
+    expect(vesakInfo.festivalTitle).toContain('Phật Đản');
+    expect(vesakInfo.isFullMoonOrNewMoon).toBe(true);
+
+    // 2026-08-27 is Vu Lan 15/7 lunar
+    const vuLanDate = new Date('2026-08-27T07:00:00+07:00');
+    const vuLanInfo = getVietnameseLunarInfo(vuLanDate);
+    expect(vuLanInfo.lunarDay).toBe(15);
+    expect(vuLanInfo.lunarMonth).toBe(7);
+    expect(vuLanInfo.festivalTitle).toContain('Vu Lan Báo Hiếu');
+  });
+
+  it('masks sensitive phone numbers and emails in community prayer registry for viewer privacy', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'temple-prayer-'));
+    const store = new SqlitePersistenceStore(tmpDir);
+    const tts = new PriorityTtsService({
+      cacheDir: path.join(tmpDir, 'tts'),
+      synthesizeEnabled: false,
+      onReadyToBroadcast: () => {}
+    });
+    const engine = new TempleStateEngine({ store, tts });
+
+    // Record prayer with sensitive phone number & email
+    const p1 = engine.recordPrayer(
+      { id: 'u-1', uniqueId: 'taman_01', nickname: 'Phật Tử Tâm An', avatarUrl: '' },
+      'Cầu bình an cho mẹ, số điện thoại 0912345678, liên hệ email taman@gmail.com',
+      10
+    );
+
+    expect(p1.category).toBe('BÌNH AN');
+    expect(p1.wishText).not.toContain('0912345678');
+    expect(p1.wishText).not.toContain('taman@gmail.com');
+    expect(p1.wishText).toContain('***');
+
+    // Record prayer with health wish
+    const p2 = engine.recordPrayer(
+      { id: 'u-2', uniqueId: 'minhtri_02', nickname: 'Minh Trí', avatarUrl: '' },
+      'Cầu cho phụ thân mau lành bệnh, sức khỏe bình phục',
+      10
+    );
+    expect(p2.category).toBe('SỨC KHỎE');
+
+    // Record prayer with ancestral remembrance
+    const p3 = engine.recordPrayer(
+      { id: 'u-3', uniqueId: 'dieuhuong_03', nickname: 'Diệu Hương', avatarUrl: '' },
+      'Nguyện cầu siêu cho hương linh cửu huyền thất tổ vãng sanh Cực Lạc',
+      10
+    );
+    expect(p3.category).toBe('CẦU SIÊU');
+
+    // Verify recent prayers in snapshot
+    const snap = engine.getSnapshot(MOCK_CONNECTOR_STATUS, MOCK_SIM_STATUS);
+    expect(snap.prayers.length).toBe(3);
+    expect(snap.prayers[0].nickname).toBe('Diệu Hương');
+
+    store.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('respects fortuneEnabled setting and dispatches flower offerings via rule engine', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'temple-rule-'));
+    const store = new SqlitePersistenceStore(tmpDir);
+    const tts = new PriorityTtsService({
+      cacheDir: path.join(tmpDir, 'tts'),
+      synthesizeEnabled: false,
+      onReadyToBroadcast: () => {}
+    });
+    const engine = new TempleStateEngine({ store, tts });
+
+    // 1. Check flower offering rule
+    const flowerEvent: NormalizedLiveEvent = {
+      eventId: 'ev-fl-1',
+      source: 'simulator',
+      type: 'chat',
+      timestamp: Date.now(),
+      user: { id: 'u-fl', uniqueId: 'phattu_hoa', nickname: 'Hoa Sen', avatarUrl: '' },
+      comment: 'Con xin dâng hoa cúng Phật trang nghiêm'
+    };
+    const flowerRitual = engine.ingestEvent(flowerEvent);
+    expect(flowerRitual?.actionType).toBe('OFFER_FLOWERS');
+    expect(flowerRitual?.offeringKind).toBe('lotus');
+
+    // 2. Check fortune toggle when fortuneEnabled is false
+    engine.updateSettings({ fortuneEnabled: false });
+    const fortuneEvent: NormalizedLiveEvent = {
+      eventId: 'ev-fort-1',
+      source: 'simulator',
+      type: 'chat',
+      timestamp: Date.now(),
+      user: { id: 'u-fort', uniqueId: 'xin_xam_1', nickname: 'Người Hữu Duyên', avatarUrl: '' },
+      comment: 'Con xin xăm đầu xuân cầu tài lộc'
+    };
+    const fortuneRitual = engine.ingestEvent(fortuneEvent);
+    // When fortune is disabled, it gracefully falls back to incense prayer instead of fortune oracle
+    expect(fortuneRitual?.actionType).toBe('BURN_INCENSE');
+    expect(fortuneRitual?.ruleName).toBe('Dâng Hương Tịnh Tâm');
+    expect(fortuneRitual?.fortune).toBeUndefined();
+
+    store.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });

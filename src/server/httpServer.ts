@@ -199,6 +199,13 @@ export async function createStudioServer(options?: {
         ...info
       });
     },
+    onPrayer: (prayer) => {
+      broadcastWs({
+        type: 'prayer',
+        prayer
+      });
+      scheduleSnapshotBroadcast();
+    },
     onStateChanged: () => {
       scheduleSnapshotBroadcast();
     }
@@ -606,6 +613,23 @@ async function handleAdminAction(
 
     case '/api/admin/ritual/chant': {
       const ritual = ctx.engine.triggerPeriodicChant();
+      return { ritual, snapshot: ctx.getFullSnapshot() };
+    }
+
+    case '/api/admin/ritual/flowers': {
+      const ritual = ctx.engine.ingestEvent({
+        eventId: `admin_flower_${Date.now()}`,
+        type: 'chat',
+        timestamp: Date.now(),
+        source: 'admin',
+        user: { id: 'admin_user', uniqueId: 'admin_user', nickname: 'Phật Tử Tại Gia', avatarUrl: '' },
+        comment: 'Con thành tâm dâng mâm hoa sen tươi cúng dường Tam Bảo'
+      });
+      return { ritual, snapshot: ctx.getFullSnapshot() };
+    }
+
+    case '/api/admin/ritual/serene': {
+      const ritual = ctx.engine.triggerSereneIdleAction();
       return { ritual, snapshot: ctx.getFullSnapshot() };
     }
 

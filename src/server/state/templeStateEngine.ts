@@ -18,6 +18,7 @@ import type {
   NormalizedLiveEvent,
   NormalizedUser,
   OfferingKind,
+  PrayerRegistryItem,
   QueueMetrics,
   RitualActionType,
   SeatedViewer,
@@ -25,6 +26,7 @@ import type {
   TempleSettings,
   TempleStateSnapshot
 } from '../../shared/types.ts';
+import { getVietnameseLunarInfo } from '../utils/lunarCalendar.ts';
 import type { PriorityTtsService } from '../audio/ttsService.ts';
 import type { PersistedTotals, SqlitePersistenceStore } from '../persistence/sqliteStore.ts';
 import {
@@ -61,6 +63,7 @@ export class TempleStateEngine {
   private readonly startedAt = Date.now();
   private readonly viewers: Map<string, SeatedViewer> = new Map();
   private readonly lanterns: FloatingLanternItem[] = [];
+  private readonly prayers: PrayerRegistryItem[] = [];
   private readonly recentRituals: DispatchedRitual[] = [];
   private readonly clientPerfMap: Map<string, ClientPerfReport> = new Map();
 
@@ -95,56 +98,60 @@ export class TempleStateEngine {
   private chantIndex = 0;
   private chantTimer: ReturnType<typeof setInterval> | null = null;
 
-  private readonly onRitualCallback: (
+  private readonly onRitualCallback?: (
     ritual: DispatchedRitual,
     totals: PersistedTotals,
     goal: CommunityGoalState
   ) => void;
-  private readonly onLikeBatchCallback: (batch: {
+  private readonly onLikeBatchCallback?: (batch: {
     count: number;
     totalWoodenFish: number;
     users: Array<{ id: string; nickname: string }>;
   }) => void;
-  private readonly onStreakProgressCallback: (info: {
+  private readonly onStreakProgressCallback?: (info: {
     userId: string;
     nickname: string;
     giftName: string;
     currentCount: number;
   }) => void;
-  private readonly onStateChangedCallback: () => void;
+  private readonly onPrayerCallback?: (prayer: PrayerRegistryItem) => void;
+  private readonly onStateChangedCallback?: () => void;
 
   constructor(options: {
     store: SqlitePersistenceStore;
     tts: PriorityTtsService;
-    onRitual: (
+    onRitual?: (
       ritual: DispatchedRitual,
       totals: PersistedTotals,
       goal: CommunityGoalState
     ) => void;
-    onLikeBatch: (batch: {
+    onLikeBatch?: (batch: {
       count: number;
       totalWoodenFish: number;
       users: Array<{ id: string; nickname: string }>;
     }) => void;
-    onStreakProgress: (info: {
+    onStreakProgress?: (info: {
       userId: string;
       nickname: string;
       giftName: string;
       currentCount: number;
     }) => void;
-    onStateChanged: () => void;
+    onPrayer?: (prayer: PrayerRegistryItem) => void;
+    onStateChanged?: () => void;
   }) {
     this.store = options.store;
     this.tts = options.tts;
     this.onRitualCallback = options.onRitual;
     this.onLikeBatchCallback = options.onLikeBatch;
     this.onStreakProgressCallback = options.onStreakProgress;
+    this.onPrayerCallback = options.onPrayer;
     this.onStateChangedCallback = options.onStateChanged;
 
     this.settings = this.store.loadSettings();
     this.totals = this.store.loadTotals();
     this.communityGoal.currentValue = this.totals.incenseBurned;
     this.ruleEngine = new DynamicRuleEngine(this.store.loadRules());
+    this.prayers = this.store.loadRecentPrayers(40);
 
     // Restore persisted viewers or seed initial serene congregation so the hall looks alive immediately
     const savedViewers = this.store.loadTopViewers(48);
@@ -180,14 +187,14 @@ export class TempleStateEngine {
     this.giftStreaks = new GiftStreakTracker({
       streakTimeoutMs: 4200,
       onFinalize: (finalEvent) => this.processFinalizedGift(finalEvent),
-      onProgress: (info) => this.onStreakProgressCallback(info)
+      onProgress: (info) => this.onStreakProgressCallback?.(info)
     });
 
     this.likeBatcher = new LikeBatchAggregator(550, (batch) => {
       this.totals.woodenFishHits += batch.count;
       this.totals.meritPoints += batch.count;
       this.store.saveTotals(this.totals);
-      this.onLikeBatchCallback({
+      this.onLikeBatchCallback?.({
         count: batch.count,
         totalWoodenFish: this.totals.woodenFishHits,
         users: batch.users
@@ -323,13 +330,13 @@ export class TempleStateEngine {
       this.eventsAcceptedTotal++;
       const v = this.ensureSeatedViewer(event.user, { meritDelta: 1 });
       return this.dispatchRitual({
-        actionType: 'SEAT_AND_CHAT',
+        actionType: 'TAM_QUAN_ENTER',
         priority: 25,
         ruleId: 'builtin_member_join',
-        ruleName: 'Vào Chánh Điện',
+        ruleName: 'Bước Qua Tam Quan',
         user: event.user,
         skin: v.skin,
-        wishText: 'Đã bước vào Chánh Điện tĩnh tâm',
+        wishText: 'Đã bước qua Tam Quan, vào Chánh Điện tĩnh tâm',
         meritAwarded: 1
       });
     }
@@ -457,6 +464,7 @@ export class TempleStateEngine {
       this.totals.meritPoints += 5;
       this.advanceCommunityGoal('incense', 1);
       this.store.saveTotals(this.totals);
+      this.recordPrayer(event.user, cleanComment, 5);
 
       return this.dispatchRitual({
         actionType: 'BURN_INCENSE',
@@ -472,6 +480,41 @@ export class TempleStateEngine {
     }
 
     return null;
+  }
+
+  public recordPrayer(user: NormalizedUser, wishText: string, merit = 5): PrayerRegistryItem {
+    const masked = String(wishText || '')
+      .replace(/\b(0\d{9,10}|\+84\d{9,10})\b/g, '***')
+      .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '***@***');
+
+    const lower = masked.toLowerCase();
+    let category: PrayerRegistryItem['category'] = 'BÌNH AN';
+    if (lower.includes('sức khỏe') || lower.includes('bệnh') || lower.includes('chữa') || lower.includes('thuốc')) {
+      category = 'SỨC KHỎE';
+    } else if (lower.includes('cầu siêu') || lower.includes('hương linh') || lower.includes('vãng sanh') || lower.includes('quá vãng')) {
+      category = 'CẦU SIÊU';
+    } else if (lower.includes('trí tuệ') || lower.includes('học') || lower.includes('thi') || lower.includes('sáng suốt')) {
+      category = 'TRÍ TUỆ';
+    } else if (lower.includes('hồi hướng') || lower.includes('công đức') || lower.includes('tam bảo')) {
+      category = 'HỒI HƯỚNG';
+    }
+
+    const item: PrayerRegistryItem = {
+      id: `prayer_${Date.now()}_${++this.ritualSeq}`,
+      userId: user.id,
+      nickname: user.nickname,
+      wishText: masked,
+      category,
+      meritAwarded: merit,
+      createdAt: Date.now()
+    };
+    this.prayers.unshift(item);
+    if (this.prayers.length > 50) this.prayers.length = 50;
+    this.store.logPrayer(item);
+    if (this.onPrayerCallback) {
+      this.onPrayerCallback(item);
+    }
+    return item;
   }
 
   private processFinalizedGift(event: NormalizedLiveEvent): DispatchedRitual | null {
@@ -526,6 +569,8 @@ export class TempleStateEngine {
       });
     }
 
+    this.recordPrayer(event.user, recentWish, meritAwarded);
+
     return this.dispatchRitual({
       actionType: tier >= 4 ? 'GRAND_CEREMONY' : 'OFFER_GIFT',
       priority: tier >= 4 ? 110 : 95,
@@ -555,11 +600,23 @@ export class TempleStateEngine {
     const merit = rule.actionParams.meritBase ?? 10;
     const incenseCount = rule.actionParams.incenseCount ?? 1;
 
+    let actionType = rule.actionType;
+    let ruleName = rule.name;
     let fortune: FortuneStick | undefined;
-    if (rule.actionType === 'DRAW_FORTUNE') {
-      fortune = FORTUNE_STICKS_DECK[Math.floor(Math.random() * FORTUNE_STICKS_DECK.length)];
-      this.totals.fortunesDrawn += 1;
-    } else if (rule.actionType === 'RELEASE_LANTERN') {
+
+    if (actionType === 'DRAW_FORTUNE') {
+      if (this.settings.fortuneEnabled) {
+        fortune = FORTUNE_STICKS_DECK[Math.floor(Math.random() * FORTUNE_STICKS_DECK.length)];
+        this.totals.fortunesDrawn += 1;
+      } else {
+        // Fallback when cultural fortune is disabled in settings: transform into incense prayer
+        actionType = 'BURN_INCENSE';
+        ruleName = 'Dâng Hương Tịnh Tâm';
+      }
+    } else if (actionType === 'OFFER_FLOWERS') {
+      this.totals.offerings.lotus = (this.totals.offerings.lotus || 0) + 1;
+      this.recordPrayer(event.user, wish, merit);
+    } else if (actionType === 'RELEASE_LANTERN') {
       this.totals.lanternsReleased += 1;
       this.totals.incenseBurned += incenseCount;
       this.lanterns.unshift({
@@ -573,12 +630,14 @@ export class TempleStateEngine {
         this.lanterns.length = 24;
       }
       this.advanceCommunityGoal('incense', incenseCount);
-    } else if (rule.actionType === 'BURN_INCENSE') {
+      this.recordPrayer(event.user, wish, merit);
+    } else if (actionType === 'BURN_INCENSE') {
       this.totals.incenseBurned += incenseCount;
       this.advanceCommunityGoal('incense', incenseCount);
-    } else if (rule.actionType === 'RING_BELL') {
+      this.recordPrayer(event.user, wish, merit);
+    } else if (actionType === 'RING_BELL') {
       this.totals.bellRings += 1;
-    } else if (rule.actionType === 'STRIKE_WOODEN_FISH') {
+    } else if (actionType === 'STRIKE_WOODEN_FISH') {
       const hits = rule.actionParams.woodenFishCount ?? 3;
       this.totals.woodenFishHits += hits;
     }
@@ -621,14 +680,15 @@ export class TempleStateEngine {
     }
 
     return this.dispatchRitual({
-      actionType: rule.actionType,
+      actionType,
       priority: rule.priority,
       ruleId: rule.id,
-      ruleName: rule.name,
+      ruleName,
       user: event.user,
       skin: v.skin,
       wishText: wish,
       incenseCount,
+      offeringKind: rule.actionParams.offeringKind,
       fortune,
       meritAwarded: merit,
       ttsText
@@ -657,7 +717,7 @@ export class TempleStateEngine {
       this.recentRituals.length = 30;
     }
     this.store.logRitual(ritual);
-    this.onRitualCallback(ritual, this.totals, this.communityGoal);
+    this.onRitualCallback?.(ritual, this.totals, this.communityGoal);
     return ritual;
   }
 
@@ -735,7 +795,7 @@ export class TempleStateEngine {
         );
       }
     }
-    this.onStateChangedCallback();
+    this.onStateChangedCallback?.();
   }
 
   public clearDemoCongregation(): void {
@@ -745,28 +805,28 @@ export class TempleStateEngine {
       }
     }
     this.recomputeSeatingAndVipRanks();
-    this.onStateChangedCallback();
+    this.onStateChangedCallback?.();
   }
 
   public updateSettings(patch: Partial<TempleSettings>): TempleSettings {
     this.settings = { ...this.settings, ...patch };
     this.store.saveSettings(this.settings);
     this.reschedulePeriodicChant();
-    this.onStateChangedCallback();
+    this.onStateChangedCallback?.();
     return { ...this.settings };
   }
 
   public upsertRule(rule: EventActionRule): EventActionRule[] {
     const updated = this.ruleEngine.upsertRule(rule);
     this.store.saveRules(updated);
-    this.onStateChangedCallback();
+    this.onStateChangedCallback?.();
     return updated;
   }
 
   public deleteRule(ruleId: string): EventActionRule[] {
     const updated = this.ruleEngine.deleteRule(ruleId);
     this.store.saveRules(updated);
-    this.onStateChangedCallback();
+    this.onStateChangedCallback?.();
     return updated;
   }
 
@@ -782,7 +842,7 @@ export class TempleStateEngine {
     this.ruleEngine.setRules(bundle.rules);
     this.store.saveRules(bundle.rules);
     this.reschedulePeriodicChant();
-    this.onStateChangedCallback();
+    this.onStateChangedCallback?.();
   }
 
   public resetSession(): void {
@@ -796,7 +856,7 @@ export class TempleStateEngine {
     this.communityGoal.targetValue = 108;
     this.communityGoal.completedCount = 0;
     this.seedDemoCongregation(8);
-    this.onStateChangedCallback();
+    this.onStateChangedCallback?.();
   }
 
   public recordClientPerf(report: ClientPerfReport): void {
@@ -849,8 +909,61 @@ export class TempleStateEngine {
       poll: JSON.parse(JSON.stringify(this.poll)),
       recentRituals: [...this.recentRituals].slice(0, 15),
       rules: this.ruleEngine.getRules(),
-      clientPerf: [...this.clientPerfMap.values()]
+      clientPerf: [...this.clientPerfMap.values()],
+      lunarInfo: getVietnameseLunarInfo(),
+      prayers: [...this.prayers].slice(0, 30)
     };
+  }
+
+  public triggerSereneIdleAction(): DispatchedRitual | null {
+    if (!this.settings.idleSereneChimes) return null;
+    const actions: Array<'RING_BELL' | 'STRIKE_WOODEN_FISH' | 'BURN_INCENSE'> = [
+      'RING_BELL',
+      'STRIKE_WOODEN_FISH',
+      'BURN_INCENSE'
+    ];
+    const picked = actions[Math.floor(Math.random() * actions.length)];
+    if (picked === 'RING_BELL') {
+      this.totals.bellRings += 1;
+      this.store.saveTotals(this.totals);
+      return this.dispatchRitual({
+        actionType: 'RING_BELL',
+        priority: 30,
+        ruleId: 'serene_idle_bell',
+        ruleName: 'Tiếng Chuông Tịnh Tâm',
+        user: { id: 'thay_tru_tri', uniqueId: 'thay_tru_tri', nickname: 'Chánh Điện', avatarUrl: '' },
+        wishText: 'Tiếng chuông Bát Nhã ngân nga, thân tâm an lạc',
+        bellIntensity: 0.9,
+        meritAwarded: 0
+      });
+    } else if (picked === 'STRIKE_WOODEN_FISH') {
+      this.totals.woodenFishHits += 3;
+      this.store.saveTotals(this.totals);
+      return this.dispatchRitual({
+        actionType: 'STRIKE_WOODEN_FISH',
+        priority: 30,
+        ruleId: 'serene_idle_mo',
+        ruleName: 'Nhịp Mõ Thanh Tịnh',
+        user: { id: 'thay_tru_tri', uniqueId: 'thay_tru_tri', nickname: 'Chánh Điện', avatarUrl: '' },
+        wishText: 'Mộc ngư điểm nhịp tinh tấn',
+        woodenFishCount: 3,
+        meritAwarded: 0
+      });
+    } else {
+      this.totals.incenseBurned += 1;
+      this.advanceCommunityGoal('incense', 1);
+      this.store.saveTotals(this.totals);
+      return this.dispatchRitual({
+        actionType: 'BURN_INCENSE',
+        priority: 30,
+        ruleId: 'serene_idle_incense',
+        ruleName: 'Khói Trầm Hương Tịch Tịnh',
+        user: { id: 'thay_tru_tri', uniqueId: 'thay_tru_tri', nickname: 'Chánh Điện', avatarUrl: '' },
+        wishText: 'Một nén tâm hương cúng dường mười phương chư Phật',
+        incenseCount: 1,
+        meritAwarded: 0
+      });
+    }
   }
 
   public shutdown(): void {

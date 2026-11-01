@@ -30,6 +30,12 @@ export const DEFAULT_SETTINGS: TempleSettings = {
   ttsMinGiftDiamonds: 1,
   ttsReadPrayers: true,
   ttsReadFortunes: true,
+  fortuneEnabled: true,
+  flowerOfferingEnabled: true,
+  lunarFestivalAuto: true,
+  showSafeZones: false,
+  collectivePrayersEnabled: true,
+  idleSereneChimes: true,
   audioMasterVolume: 0.9,
   audioMusicVolume: 0.55,
   audioSfxVolume: 0.85,
@@ -263,6 +269,26 @@ export const DEFAULT_EVENT_RULES: readonly EventActionRule[] = [
       meritBase: 10,
       readTts: true,
       ttsTemplate: 'Đèn hoa đăng của Phật tử {{user.nickname}}: {{wish}}.'
+    }
+  },
+  {
+    id: 'rule_offer_flowers',
+    name: 'Dâng Hoa Sen Tươi Cúng Phật',
+    enabled: true,
+    priority: 74,
+    cooldownSec: 3,
+    matchMode: 'any',
+    conditions: [
+      { field: 'event.comment', op: 'contains', value: 'dâng hoa' },
+      { field: 'event.comment', op: 'contains', value: 'cúng hoa' },
+      { field: 'event.comment', op: 'contains', value: 'hoa sen' }
+    ],
+    actionType: 'OFFER_FLOWERS',
+    actionParams: {
+      offeringKind: 'lotus',
+      meritBase: 15,
+      readTts: true,
+      ttsTemplate: 'Phật tử {{user.nickname}} thành tâm dâng hoa sen tươi cúng dường Tam Bảo. {{wish}}.'
     }
   },
   {

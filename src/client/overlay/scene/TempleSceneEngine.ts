@@ -113,17 +113,24 @@ interface FloatingBannerEffect {
   kind: OfferingKind | 'merit';
 }
 
+type CeremonyStage = 'ENTER' | 'PRAY' | 'BOW_1' | 'BOW_2' | 'BOW_3' | 'OFFER' | 'EXIT';
+
 interface CentralCeremonyActor {
-  active: boolean;
+  id: string;
   nickname: string;
   actionLabel: string;
   wishText: string;
   skin: CharacterSkinId;
+  offeringKind?: OfferingKind;
+  isFlowerOffering?: boolean;
+  stage: CeremonyStage;
+  stageTimer: number;
+  totalElapsed: number;
+  totalDuration: number;
   x: number;
   y: number;
   poseKey: CharacterPoseKey;
-  elapsedSec: number;
-  durationSec: number;
+  alpha: number;
 }
 
 const VIP_SEAT_COORDS: ReadonlyArray<{ x: number; y: number }> = [
@@ -164,24 +171,18 @@ export class TempleSceneEngine {
   private petalDensity = 1.0;
   private lightingWarmth = 1.0;
   private activeIncenseSticks = 9;
+  private showSafeZones = false;
+  private idleSereneChimes = true;
 
   private seatCapacity = 24;
   private seats: SeatCoord[] = [];
   private readonly actors: Map<string, ActorInstance> = new Map();
   private lanterns: FloatingLanternItem[] = [];
 
-  private readonly centralActor: CentralCeremonyActor = {
-    active: false,
-    nickname: '',
-    actionLabel: '',
-    wishText: '',
-    skin: 'lam_female',
-    x: 540,
-    y: 1680,
-    poseKey: 'walk1',
-    elapsedSec: 0,
-    durationSec: 6.2
-  };
+  // Sequential Ceremony Queue (prevents sprite collisions and mid-ceremony overwrites)
+  private readonly ceremonyQueue: CentralCeremonyActor[] = [];
+  private currentCeremonyActor: CentralCeremonyActor | null = null;
+  private lastInteractionTimeSec = 0;
 
   // Pooled particle arrays (zero allocations per frame)
   private readonly smokePool: SmokeParticle[] = [];
@@ -219,6 +220,13 @@ export class TempleSceneEngine {
     }
     this.ctx = ctx;
     this.atlas = buildProceduralAtlas();
+
+    if (typeof window !== 'undefined' && window.location) {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.has('safezone') || sp.get('safezone') === '1') {
+        this.showSafeZones = true;
+      }
+    }
 
     // Context loss & restore resilience listeners
     this.canvas.addEventListener('contextlost', (e) => {
@@ -387,6 +395,10 @@ export class TempleSceneEngine {
     this.lightingWarmth = settings.lightingWarmth;
     this.activeIncenseSticks = Math.max(3, Math.min(21, 5 + (incenseBurned % 17)));
     this.lanterns = lanterns.slice(0, this.quality === 'low' ? 6 : this.quality === 'medium' ? 14 : 24);
+    if (typeof settings.showSafeZones === 'boolean') {
+      this.showSafeZones = settings.showSafeZones;
+    }
+    this.idleSereneChimes = settings.idleSereneChimes ?? true;
 
     const targetCap =
       settings.seatCapacityMode === 'auto'
@@ -458,8 +470,42 @@ export class TempleSceneEngine {
     });
   }
 
+  public enqueueCeremony(params: {
+    nickname: string;
+    actionLabel: string;
+    wishText: string;
+    skin: CharacterSkinId;
+    offeringKind?: OfferingKind;
+    isFlowerOffering?: boolean;
+    speedBoost?: boolean;
+  }): void {
+    if (this.ceremonyQueue.length >= 8) {
+      this.ceremonyQueue.shift();
+    }
+    const duration = params.speedBoost || this.ceremonyQueue.length > 2 ? 5.2 : 7.2;
+    this.ceremonyQueue.push({
+      id: `ceremony_${Date.now()}_${Math.random()}`,
+      nickname: params.nickname,
+      actionLabel: params.actionLabel,
+      wishText: params.wishText,
+      skin: params.skin,
+      offeringKind: params.offeringKind,
+      isFlowerOffering: params.isFlowerOffering,
+      stage: 'ENTER',
+      stageTimer: 0,
+      totalElapsed: 0,
+      totalDuration: duration,
+      x: 540,
+      y: 1780,
+      poseKey: 'walk1',
+      alpha: 0
+    });
+    this.lastInteractionTimeSec = this.clockSec;
+  }
+
   public triggerRitualVisuals(ritual: DispatchedRitual): void {
     const nowMs = performance.now();
+    this.lastInteractionTimeSec = this.clockSec;
     const actor = this.actors.get(ritual.user.id);
 
     if (actor) {
@@ -472,7 +518,8 @@ export class TempleSceneEngine {
       if (
         ritual.actionType === 'BURN_INCENSE' ||
         ritual.actionType === 'OFFER_GIFT' ||
-        ritual.actionType === 'GRAND_CEREMONY'
+        ritual.actionType === 'GRAND_CEREMONY' ||
+        ritual.actionType === 'OFFER_FLOWERS'
       ) {
         actor.state = 'PROSTRATE_BOW';
         actor.stateTimer = 0;
@@ -482,7 +529,35 @@ export class TempleSceneEngine {
       }
     }
 
-    // Trigger central carpet ceremonial walker for active interactive rituals
+    if (ritual.actionType === 'OFFER_FLOWERS') {
+      this.haloBoost = Math.min(1.25, this.haloBoost + 0.65);
+      this.spawnWaveRing(540, 875, '#FF94B8');
+      this.spawnFloatingBanner(
+        540,
+        840,
+        `+${ritual.meritAwarded} Tinh Tấn`,
+        '🪷 Dâng Hoa Sen Cúng Phật 🪷',
+        'lotus'
+      );
+      this.burstPetals(22);
+      this.enqueueCeremony({
+        nickname: ritual.user.nickname,
+        actionLabel: 'DÂNG HOA SEN TƯƠI',
+        wishText: ritual.wishText || 'Kính dâng hoa sen tươi lên Tam Bảo',
+        skin: ritual.skin || actor?.skin || 'lam_female',
+        offeringKind: 'lotus',
+        isFlowerOffering: true
+      });
+      return;
+    }
+
+    if (ritual.actionType === 'TAM_QUAN_ENTER') {
+      this.spawnWaveRing(540, 1750, '#FFEAA0');
+      this.burstPetals(6);
+      return;
+    }
+
+    // Enqueue central aisle worshipper for major ceremonial actions
     if (
       ritual.actionType === 'BURN_INCENSE' ||
       ritual.actionType === 'OFFER_GIFT' ||
@@ -490,13 +565,14 @@ export class TempleSceneEngine {
       ritual.actionType === 'RELEASE_LANTERN' ||
       ritual.actionType === 'DRAW_FORTUNE'
     ) {
-      this.centralActor.active = true;
-      this.centralActor.nickname = ritual.user.nickname;
-      this.centralActor.actionLabel = ritual.ruleName;
-      this.centralActor.wishText = ritual.wishText || 'Nam Mô A Di Đà Phật';
-      this.centralActor.skin = ritual.skin || actor?.skin || 'lam_female';
-      this.centralActor.elapsedSec = 0;
-      this.centralActor.durationSec = ritual.actionType === 'GRAND_CEREMONY' ? 7.5 : 5.6;
+      this.enqueueCeremony({
+        nickname: ritual.user.nickname,
+        actionLabel: ritual.ruleName,
+        wishText: ritual.wishText || 'Nam Mô A Di Đà Phật',
+        skin: ritual.skin || actor?.skin || 'lam_female',
+        offeringKind: ritual.offeringKind,
+        speedBoost: ritual.actionType === 'BURN_INCENSE'
+      });
     }
 
     if (ritual.actionType === 'RING_BELL' || ritual.actionType === 'PERIODIC_CHANT') {
@@ -527,7 +603,7 @@ export class TempleSceneEngine {
         ritual.giftName || 'Dâng Lễ Vật',
         ritual.offeringKind || 'lotus'
       );
-      this.burstPetals(12);
+      this.burstPetals(14);
     } else if (ritual.meritAwarded > 0) {
       this.haloBoost = Math.min(1.0, this.haloBoost + 0.25);
       this.spawnFloatingBanner(
@@ -545,6 +621,7 @@ export class TempleSceneEngine {
     this.spawnWaveRing(210, 855, '#FFCC80');
     const spawnCount = Math.min(6, Math.max(1, Math.ceil(count / 2)));
     this.burstPetals(spawnCount);
+    this.lastInteractionTimeSec = this.clockSec;
   }
 
   private spawnWaveRing(x: number, y: number, color: string): void {
@@ -615,12 +692,12 @@ export class TempleSceneEngine {
     c.height = 1920;
     const ctx = c.getContext('2d')!;
 
-    // 1. Deep Sanctuary Wall Gradient by TimeOfDay
+    // 1. Deep Sanctuary Lacquer Wall Gradient by TimeOfDay
     const palettes: Record<TimeOfDayAmbience, [string, string, string]> = {
-      SACRED_NIGHT: ['#0E0503', '#240B05', '#120604'],
-      GOLDEN_DUSK: ['#260D06', '#4A190B', '#1B0805'],
-      DAY_SERENE: ['#2B140C', '#522211', '#210C06'],
-      FESTIVAL_GLOW: ['#2D0A06', '#5C180D', '#1E0704']
+      SACRED_NIGHT: ['#0A0402', '#220A04', '#100503'],
+      GOLDEN_DUSK: ['#240B05', '#4E1B0C', '#1A0704'],
+      DAY_SERENE: ['#28120B', '#552413', '#200C06'],
+      FESTIVAL_GLOW: ['#2E0B06', '#62190E', '#1C0604']
     };
     const [topCol, midCol, botCol] = palettes[mode] || palettes.SACRED_NIGHT;
     const bgGrad = ctx.createLinearGradient(0, 0, 0, 1920);
@@ -630,21 +707,21 @@ export class TempleSceneEngine {
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, 1080, 1920);
 
-    // Warm sanctuary radial ambient glow behind the altar
-    const sanctuaryGlow = ctx.createRadialGradient(540, 520, 40, 540, 580, 620);
-    sanctuaryGlow.addColorStop(0, 'rgba(255, 196, 85, 0.35)');
-    sanctuaryGlow.addColorStop(0.55, 'rgba(180, 68, 20, 0.16)');
+    // Warm sanctuary radial ambient glow behind the Amitabha altar
+    const sanctuaryGlow = ctx.createRadialGradient(540, 520, 40, 540, 580, 640);
+    sanctuaryGlow.addColorStop(0, 'rgba(255, 198, 88, 0.38)');
+    sanctuaryGlow.addColorStop(0.55, 'rgba(180, 68, 20, 0.18)');
     sanctuaryGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = sanctuaryGlow;
     ctx.fillRect(0, 0, 1080, 1200);
 
-    // 2. Perspective Wooden Hall Floor & Central Red-Gold Brocade Carpet (y = 1020..1920)
-    const floorGrad = ctx.createLinearGradient(0, 1020, 0, 1920);
+    // 2. Perspective Wooden Hall Floor (y = 1020..1720)
+    const floorGrad = ctx.createLinearGradient(0, 1020, 0, 1720);
     floorGrad.addColorStop(0, '#2B1008');
     floorGrad.addColorStop(0.65, '#1D0A05');
     floorGrad.addColorStop(1, '#0D0402');
     ctx.fillStyle = floorGrad;
-    ctx.fillRect(0, 1020, 1080, 900);
+    ctx.fillRect(0, 1020, 1080, 700);
 
     // Wooden floor perspective planks
     ctx.strokeStyle = 'rgba(229, 184, 91, 0.08)';
@@ -652,7 +729,7 @@ export class TempleSceneEngine {
     for (let i = -6; i <= 6; i++) {
       ctx.beginPath();
       ctx.moveTo(540 + i * 65, 1040);
-      ctx.lineTo(540 + i * 145, 1820);
+      ctx.lineTo(540 + i * 145, 1720);
       ctx.stroke();
     }
 
@@ -666,8 +743,8 @@ export class TempleSceneEngine {
     ctx.lineWidth = 2.5;
     ctx.strokeRect(40, 1015, 1000, 178);
 
-    // Central Royal Crimson-Gold Carpet (Thảm Đỏ Dẫn Lễ Chính Điện)
-    const carpetGrad = ctx.createLinearGradient(540, 1020, 540, 1820);
+    // Central Royal Crimson-Gold Brocade Carpet (Thảm Đỏ Dẫn Lễ Chánh Điện)
+    const carpetGrad = ctx.createLinearGradient(540, 1020, 540, 1720);
     carpetGrad.addColorStop(0, '#7A160E');
     carpetGrad.addColorStop(0.5, '#991D14');
     carpetGrad.addColorStop(1, '#590E08');
@@ -675,8 +752,8 @@ export class TempleSceneEngine {
     ctx.beginPath();
     ctx.moveTo(455, 1020);
     ctx.lineTo(625, 1020);
-    ctx.lineTo(685, 1780);
-    ctx.lineTo(395, 1780);
+    ctx.lineTo(685, 1720);
+    ctx.lineTo(395, 1720);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = '#E5B85B';
@@ -688,46 +765,133 @@ export class TempleSceneEngine {
     ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(470, 1025);
-    ctx.lineTo(415, 1775);
+    ctx.lineTo(415, 1715);
     ctx.moveTo(610, 1025);
-    ctx.lineTo(665, 1775);
+    ctx.lineTo(665, 1715);
     ctx.stroke();
 
-    // 3. Ironwood Pillars (Đôi Cột Gỗ Lim Đại Tự Câu Đối Vàng)
-    for (const [px, couplet] of [
-      [62, 'PHẬT NHẬT TĂNG HUY'],
-      [1018, 'PHÁP LUÂN THƯỜNG CHUYỂN']
-    ] as const) {
-      const pGrad = ctx.createLinearGradient(px - 36, 0, px + 36, 0);
+    // 3. Ancient Tam Quan Courtyard Pavement at Bottom (Sân Chùa Bát Tràng / Đá Xanh Cổ y = 1720..1920)
+    const courtyardGrad = ctx.createLinearGradient(0, 1720, 0, 1920);
+    courtyardGrad.addColorStop(0, '#1B1410');
+    courtyardGrad.addColorStop(0.5, '#120D0A');
+    courtyardGrad.addColorStop(1, '#080504');
+    ctx.fillStyle = courtyardGrad;
+    ctx.fillRect(0, 1720, 1080, 200);
+
+    // Granite courtyard slabs grid
+    ctx.strokeStyle = 'rgba(217, 164, 65, 0.12)';
+    ctx.lineWidth = 1.2;
+    for (let gy = 1720; gy <= 1920; gy += 38) {
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(1080, gy);
+      ctx.stroke();
+    }
+    for (let gx = 0; gx <= 1080; gx += 72) {
+      ctx.beginPath();
+      ctx.moveTo(gx, 1720);
+      ctx.lineTo(gx, 1920);
+      ctx.stroke();
+    }
+
+    // Stone Steps from Tam Quan Courtyard up to Chánh Điện
+    ctx.fillStyle = '#261B14';
+    ctx.fillRect(380, 1715, 320, 14);
+    ctx.strokeStyle = '#C9983A';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(380, 1715, 320, 14);
+
+    // Stone Lantern Pedestals flanking courtyard aisle (x = 310, 770)
+    for (const sx of [310, 770]) {
+      // Stone Base
+      ctx.fillStyle = '#2A201A';
+      ctx.fillRect(sx - 28, 1728, 56, 32);
+      ctx.strokeStyle = '#947547';
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(sx - 28, 1728, 56, 32);
+      // Stone Lantern Top
+      ctx.fillStyle = '#3D2F24';
+      ctx.beginPath();
+      ctx.moveTo(sx - 34, 1728);
+      ctx.lineTo(sx + 34, 1728);
+      ctx.lineTo(sx, 1700);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // Lantern Warm Light Glow
+      const slGlow = ctx.createRadialGradient(sx, 1722, 2, sx, 1722, 28);
+      slGlow.addColorStop(0, 'rgba(255, 210, 120, 0.85)');
+      slGlow.addColorStop(1, 'rgba(255, 140, 30, 0)');
+      ctx.fillStyle = slGlow;
+      ctx.beginPath();
+      ctx.arc(sx, 1722, 28, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 4. Ironwood Pillars with Authentic Couplets (Đôi Cột Gỗ Lim Đại Tự Câu Đối Sơn Son Thếp Vàng)
+    // Left: 佛日增輝光遍照 (Phật nhật tăng huy quang biến chiếu)
+    // Right: 法輪常轉德弘開 (Pháp luân thường chuyển đức hoằng khai)
+    const coupletData: ReadonlyArray<{
+      px: number;
+      han: string[];
+      quocNgu: string[];
+    }> = [
+      {
+        px: 62,
+        han: ['佛', '日', '增', '輝', '光', '遍', '照'],
+        quocNgu: ['Phật', 'nhật', 'tăng', 'huy', 'quang', 'biến', 'chiếu']
+      },
+      {
+        px: 1018,
+        han: ['法', '輪', '常', '轉', '德', '弘', '開'],
+        quocNgu: ['Pháp', 'luân', 'thường', 'chuyển', 'đức', 'hoằng', 'khai']
+      }
+    ];
+
+    for (const cInfo of coupletData) {
+      const px = cInfo.px;
+      const pGrad = ctx.createLinearGradient(px - 38, 0, px + 38, 0);
       pGrad.addColorStop(0, '#240904');
       pGrad.addColorStop(0.45, '#591B0E');
       pGrad.addColorStop(1, '#1E0703');
       ctx.fillStyle = pGrad;
-      ctx.fillRect(px - 36, 160, 72, 920);
+      ctx.fillRect(px - 38, 160, 76, 920);
       ctx.strokeStyle = '#C89638';
       ctx.lineWidth = 2;
-      ctx.strokeRect(px - 36, 160, 72, 920);
+      ctx.strokeRect(px - 38, 160, 76, 920);
 
-      // Vertical lacquer couplet plaque (Câu đối sơn son thếp vàng)
-      ctx.fillStyle = 'rgba(54, 14, 7, 0.92)';
+      // Vertical lacquer couplet plaque (Liễn câu đối sơn mài son thắm)
+      ctx.fillStyle = 'rgba(56, 14, 7, 0.94)';
       ctx.beginPath();
-      ctx.roundRect(px - 22, 310, 44, 520, 10);
+      ctx.roundRect(px - 26, 285, 52, 595, 12);
       ctx.fill();
       ctx.strokeStyle = '#F0C35E';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.2;
       ctx.stroke();
 
-      ctx.fillStyle = '#FFE28A';
-      ctx.font = '700 20px "Noto Serif", Georgia, serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const words = couplet.split(' ');
-      words.forEach((w, idx) => {
-        ctx.fillText(w, px, 385 + idx * 112);
-      });
+      // Inner thin gold frame
+      ctx.strokeStyle = 'rgba(255, 226, 138, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px - 22, 290, 44, 585);
+
+      // Draw Hán Characters + Quốc Ngữ Subtitles
+      for (let i = 0; i < 7; i++) {
+        const cy = 330 + i * 78;
+        // Hán Tự
+        ctx.fillStyle = '#FFE596';
+        ctx.font = '700 24px "Noto Serif", Georgia, serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cInfo.han[i], px, cy - 8);
+
+        // Quốc ngữ chữ nhỏ
+        ctx.fillStyle = '#E5B85B';
+        ctx.font = '600 12px "Be Vietnam Pro", system-ui, sans-serif';
+        ctx.fillText(cInfo.quocNgu[i], px, cy + 14);
+      }
     }
 
-    // 4. Carved Gilded Wooden Arch & Silk Valance (Cửa Võng Chạm Hoa Sen & Rèm Gấm)
+    // 5. Carved Gilded Wooden Arch & Silk Valance (Cửa Võng Chạm Hoa Sen & Rèm Gấm)
     const archGrad = ctx.createLinearGradient(0, 165, 0, 290);
     archGrad.addColorStop(0, '#4F140A');
     archGrad.addColorStop(1, '#852214');
@@ -749,7 +913,49 @@ export class TempleSceneEngine {
       ctx.stroke();
     }
 
-    // 5. Hoi An Silk Lanterns hanging on left and right
+    // 6. Gilded Lacquer Hoành Phi: ĐẠI HÙNG BẢO ĐIỆN (大雄寶殿) & VẠN ĐỨC TRANG NGHIÊM (萬德莊嚴)
+    // Upper Main Plaque: ĐẠI HÙNG BẢO ĐIỆN (x=540, y=188)
+    const hpGrad = ctx.createLinearGradient(310, 170, 770, 246);
+    hpGrad.addColorStop(0, '#5C1408');
+    hpGrad.addColorStop(0.5, '#7F1E0E');
+    hpGrad.addColorStop(1, '#4A1006');
+    ctx.fillStyle = hpGrad;
+    ctx.beginPath();
+    ctx.roundRect(320, 174, 440, 70, 10);
+    ctx.fill();
+    ctx.strokeStyle = '#F2C55C';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Inner gold border
+    ctx.strokeStyle = 'rgba(255, 226, 138, 0.65)';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(326, 180, 428, 58);
+
+    ctx.fillStyle = '#FFE596';
+    ctx.font = '700 28px "Noto Serif", Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ĐẠI HÙNG BẢO ĐIỆN', 540, 201);
+
+    ctx.fillStyle = '#E5B85B';
+    ctx.font = '600 16px "Noto Serif", Georgia, serif';
+    ctx.fillText('大 雄 寶 殿', 540, 226);
+
+    // Lower Sub-Plaque: VẠN ĐỨC TRANG NGHIÊM (萬德莊嚴) above altar (y=725)
+    ctx.fillStyle = 'rgba(64, 16, 8, 0.92)';
+    ctx.beginPath();
+    ctx.roundRect(400, 730, 280, 42, 8);
+    ctx.fill();
+    ctx.strokeStyle = '#D9A441';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = '#FFE596';
+    ctx.font = '700 18px "Noto Serif", Georgia, serif';
+    ctx.fillText('VẠN ĐỨC TRANG NGHIÊM · 萬德莊嚴', 540, 751);
+
+    // 7. Hoi An Silk Lanterns hanging on left and right
     for (const lx of [215, 865]) {
       ctx.strokeStyle = '#D9A441';
       ctx.lineWidth = 3;
@@ -776,7 +982,7 @@ export class TempleSceneEngine {
       ctx.stroke();
     }
 
-    // 6. Main Carved Altar Table (Bàn Thờ Tam Bảo Sơn Son Thếp Vàng y = 785..1020)
+    // 8. Main Carved Altar Table (Bàn Thờ Tam Bảo Sơn Son Thếp Vàng y = 785..1020)
     const altarGrad = ctx.createLinearGradient(160, 790, 920, 1020);
     altarGrad.addColorStop(0, '#6B1C0E');
     altarGrad.addColorStop(0.5, '#8A2614');
@@ -814,7 +1020,7 @@ export class TempleSceneEngine {
       }
     }
 
-    // 7. Foreground Sacred Lotus Pond at bottom (Hồ Sen Hoa Đăng Tiền Cảnh y = 1755..1920)
+    // 9. Foreground Sacred Lotus Pond at bottom (Hồ Sen Hoa Đăng Tiền Cảnh y = 1755..1920)
     const pondGrad = ctx.createLinearGradient(0, 1755, 0, 1920);
     pondGrad.addColorStop(0, 'rgba(12, 28, 36, 0.88)');
     pondGrad.addColorStop(1, 'rgba(5, 12, 18, 0.98)');
@@ -975,14 +1181,19 @@ export class TempleSceneEngine {
     // 6. Depth-Sorted Viewer Characters (Sorted strictly by Y so front rows overlap back rows cleanly)
     this.updateAndDrawActors(dt, t, nowMs);
 
-    // 7. Central Red-Carpet Ceremonial Worshipper (Walks up -> Kneels -> 3-Bow Prostration)
-    this.updateAndDrawCentralWorshipper(dt, t);
+    // 7. Central Red-Carpet Ceremonial Queue (Walks up -> Kneels -> Three Bows -> Offering -> Leaves)
+    this.updateAndDrawCeremonyQueue(dt, t);
 
     // 8. Foreground Lotus Pond & Floating Prayer Lanterns
     this.drawFloatingLanterns(t);
 
     // 9. Atmospheric Gold Sparks, Falling Lotus Petals, Bell Sound Waves & Floating Merit Banners
     this.updateAndDrawAtmosphereAndFx(dt, t);
+
+    // 10. TikTok 9:16 Safe Zones Guidelines Overlay (if enabled)
+    if (this.showSafeZones) {
+      this.drawTikTokSafeZones();
+    }
   }
 
   private updateAndDrawSmoke(dt: number, t: number): void {
@@ -1169,33 +1380,92 @@ export class TempleSceneEngine {
     }
   }
 
-  private updateAndDrawCentralWorshipper(dt: number, t: number): void {
-    const c = this.centralActor;
-    if (!c.active) return;
+  private updateAndDrawCeremonyQueue(dt: number, t: number): void {
+    // If currently no active ceremony worshipper, pop next one from the queue
+    if (!this.currentCeremonyActor && this.ceremonyQueue.length > 0) {
+      this.currentCeremonyActor = this.ceremonyQueue.shift()!;
+    }
 
-    c.elapsedSec += dt;
-    if (c.elapsedSec >= c.durationSec) {
-      c.active = false;
+    // Idle Serene auto-action: If quiet for > 35s, a lay devotee walks in to offer incense
+    if (
+      !this.currentCeremonyActor &&
+      this.ceremonyQueue.length === 0 &&
+      this.idleSereneChimes &&
+      this.clockSec - this.lastInteractionTimeSec > 38
+    ) {
+      this.lastInteractionTimeSec = this.clockSec;
+      this.enqueueCeremony({
+        nickname: 'Phật tử Chùa Online',
+        actionLabel: 'THỈNH CHUÔNG & THẮP HƯƠNG',
+        wishText: 'Nam Mô A Di Đà Phật · Cầu quốc thái dân an',
+        skin: 'lam_male',
+        offeringKind: 'lotus'
+      });
       return;
     }
 
-    // Timeline:
-    // 0.0s .. 1.6s: Walk up red carpet from y=1660 to y=1115 in front of Bronze Censer
-    // 1.6s .. 5.2s: Perform Three Bows (Đảnh Lễ Tam Bái)
-    // 5.2s .. end: Pray hands & fade
-    if (c.elapsedSec < 1.6) {
-      const p = c.elapsedSec / 1.6;
-      c.x = 540;
-      c.y = 1660 - (1660 - 1115) * p;
-      c.poseKey = Math.floor(c.elapsedSec * 6) % 2 === 0 ? 'walk1' : 'walk2';
-    } else {
-      c.x = 540;
-      c.y = 1115;
-      const bowCycle = (c.elapsedSec - 1.6) % 1.25;
-      if (bowCycle < 0.25) c.poseKey = 'prayHands';
-      else if (bowCycle < 0.45) c.poseKey = 'kneelDown';
-      else if (bowCycle < 0.9) c.poseKey = 'prostrateBow';
-      else c.poseKey = 'kneelDown';
+    const c = this.currentCeremonyActor;
+    if (!c) return;
+
+    c.stageTimer += dt;
+    c.totalElapsed += dt;
+
+    // Stage State Machine: ENTER -> PRAY -> BOW_1 -> BOW_2 -> BOW_3 -> OFFER -> EXIT
+    switch (c.stage) {
+      case 'ENTER': {
+        const enterDuration = 1.35;
+        const progress = Math.min(1, c.stageTimer / enterDuration);
+        c.alpha = Math.min(1, c.alpha + dt * 2.5);
+        c.x = 540;
+        c.y = 1760 - (1760 - 1120) * progress;
+        c.poseKey = Math.floor(c.stageTimer * 6) % 2 === 0 ? 'walk1' : 'walk2';
+        if (progress >= 1) {
+          c.y = 1120;
+          c.stage = 'PRAY';
+          c.stageTimer = 0;
+        }
+        break;
+      }
+      case 'PRAY': {
+        c.poseKey = 'prayHands';
+        if (c.stageTimer >= 1.0) {
+          c.stage = 'BOW_1';
+          c.stageTimer = 0;
+        }
+        break;
+      }
+      case 'BOW_1':
+      case 'BOW_2':
+      case 'BOW_3': {
+        // Authentic 3-bow cycle: prayHands (0.2s) -> kneelDown (0.25s) -> prostrateBow (0.55s) -> kneelDown (0.2s)
+        const phase = c.stageTimer;
+        if (phase < 0.2) c.poseKey = 'prayHands';
+        else if (phase < 0.45) c.poseKey = 'kneelDown';
+        else if (phase < 1.0) c.poseKey = 'prostrateBow';
+        else if (phase < 1.2) c.poseKey = 'kneelDown';
+        else {
+          c.stage = c.stage === 'BOW_1' ? 'BOW_2' : c.stage === 'BOW_2' ? 'BOW_3' : 'OFFER';
+          c.stageTimer = 0;
+        }
+        break;
+      }
+      case 'OFFER': {
+        c.poseKey = 'prayHands';
+        if (c.stageTimer >= 1.2) {
+          c.stage = 'EXIT';
+          c.stageTimer = 0;
+        }
+        break;
+      }
+      case 'EXIT': {
+        c.poseKey = 'prayHands';
+        c.alpha = Math.max(0, 1 - c.stageTimer / 0.85);
+        if (c.stageTimer >= 0.85 || c.alpha <= 0.02) {
+          this.currentCeremonyActor = null;
+          return;
+        }
+        break;
+      }
     }
 
     const scale = 0.72 + ((c.y - 1115) / 550) * 0.18;
@@ -1206,11 +1476,26 @@ export class TempleSceneEngine {
 
     const ctx = this.ctx;
     ctx.save();
-    // Sacred spotlight beam on central worshipper
-    ctx.globalAlpha = 0.28 + 0.08 * Math.sin(t * 4);
+    // Sacred spotlight beam & halo on central worshipper
+    ctx.globalAlpha = c.alpha * (0.26 + 0.08 * Math.sin(t * 4));
     ctx.drawImage(this.atlas.haloWheel, c.x - 130, c.y - 190, 260, 260);
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = c.alpha;
     ctx.drawImage(frame, c.x - w * 0.5, c.y - h * 0.88, w, h);
+
+    // Floating offering icon above hands during OFFER stage
+    if (c.stage === 'OFFER') {
+      const offIcon = c.isFlowerOffering
+        ? this.atlas.offeringLotus
+        : c.offeringKind === 'dragon'
+          ? this.atlas.offeringDragon
+          : c.offeringKind === 'fruit'
+            ? this.atlas.offeringFruit
+            : c.offeringKind === 'lamp'
+              ? this.atlas.offeringLamp
+              : this.atlas.offeringLotus;
+      const floatY = c.y - h * 0.88 - 55 + Math.sin(t * 5) * 6;
+      ctx.drawImage(offIcon, c.x - 30, floatY, 60, 60);
+    }
     ctx.restore();
 
     this.drawNamePill(c.nickname, c.x, c.y - h * 0.88 - 14, 0.72, true, 0, 220);
@@ -1422,6 +1707,55 @@ export class TempleSceneEngine {
     ctx.fillText(clean, clampedX, y - h * 0.5 + 1);
   }
 
+  private drawTikTokSafeZones(): void {
+    const ctx = this.ctx;
+    ctx.save();
+
+    // 1. Top Header Zone (Y: 0..140)
+    ctx.fillStyle = 'rgba(255, 60, 60, 0.12)';
+    ctx.fillRect(0, 0, 1080, 140);
+    ctx.strokeStyle = 'rgba(255, 100, 100, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(0, 140);
+    ctx.lineTo(1080, 140);
+    ctx.stroke();
+
+    // 2. Right Side Interaction Actions (X: 920..1080, Y: 800..1640)
+    ctx.fillStyle = 'rgba(255, 60, 60, 0.12)';
+    ctx.fillRect(920, 800, 160, 840);
+    ctx.strokeRect(920, 800, 160, 840);
+
+    // 3. Bottom Chat & Comment Stream (Y: 1640..1920)
+    ctx.fillStyle = 'rgba(255, 60, 60, 0.12)';
+    ctx.fillRect(0, 1640, 1080, 280);
+    ctx.beginPath();
+    ctx.moveTo(0, 1640);
+    ctx.lineTo(1080, 1640);
+    ctx.stroke();
+
+    // Reset dash & draw guide badges
+    ctx.setLineDash([]);
+    ctx.font = '600 16px "Be Vietnam Pro", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255, 200, 200, 0.9)';
+    ctx.fillText('TIKTOK TOP HEADER & AVATAR ZONE (0 - 140px)', 540, 75);
+    ctx.fillText('TIKTOK COMMENT TRAY (1640 - 1920px)', 540, 1780);
+
+    ctx.save();
+    ctx.translate(1000, 1220);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillText('TIKTOK RIGHT ACTION BUTTONS (X: 920-1080)', 0, 0);
+    ctx.restore();
+
+    // Center Stage Guide Badge
+    ctx.fillStyle = 'rgba(229, 184, 91, 0.85)';
+    ctx.fillText('✦ VÙNG AN TOÀN TRUNG TÂM CHÁNH ĐIỆN ✦', 540, 1620);
+
+    ctx.restore();
+  }
+
   public getPerfReport(clientId = 'overlay'): ClientPerfReport {
     const perfMem = (performance as any).memory;
     const jsHeapMb = perfMem?.usedJSHeapSize
@@ -1437,7 +1771,7 @@ export class TempleSceneEngine {
       fps: this.measuredFps,
       frameTimeMs: +this.avgFrameTimeMs.toFixed(2),
       droppedFrames: this.droppedFrames,
-      activeActors: this.actors.size + TEACHERS.length + (this.centralActor.active ? 1 : 0),
+      activeActors: this.actors.size + TEACHERS.length + (this.currentCeremonyActor ? 1 : 0),
       activeParticles,
       rendererType: this.pixiVerifyBadge,
       jsHeapMb,

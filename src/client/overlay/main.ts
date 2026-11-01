@@ -62,6 +62,9 @@ const pillIncenseEl = document.getElementById('pillIncense')!;
 const pillBellEl = document.getElementById('pillBell')!;
 const pillLanternsEl = document.getElementById('pillLanterns')!;
 const pillTimerEl = document.getElementById('pillTimer')!;
+const pillLunarEl = document.getElementById('pillLunar')!;
+const pillLunarIconEl = document.getElementById('pillLunarIcon')!;
+const prayerTickerTextEl = document.getElementById('prayerTickerText')!;
 const goalProgressTextEl = document.getElementById('goalProgressText')!;
 const goalBarFillEl = document.getElementById('goalBarFill')!;
 const pollQuestionEl = document.getElementById('pollQuestion')!;
@@ -97,6 +100,21 @@ function applyFullSnapshot(snap: TempleStateSnapshot): void {
   pillIncenseEl.textContent = String(snap.totals.incenseBurned);
   pillBellEl.textContent = String(snap.totals.bellRings);
   pillLanternsEl.textContent = String(snap.totals.lanternsReleased);
+
+  if (snap.lunarInfo) {
+    if (snap.lunarInfo.festivalTitle) {
+      pillLunarIconEl.textContent = '🏮';
+      pillLunarEl.textContent = snap.lunarInfo.festivalTitle;
+    } else {
+      pillLunarIconEl.textContent = '🌙';
+      pillLunarEl.textContent = snap.lunarInfo.lunarDateStr;
+    }
+  }
+
+  if (snap.prayers && snap.prayers.length > 0) {
+    const latest = snap.prayers[0];
+    prayerTickerTextEl.textContent = `${latest.nickname} [${latest.category}]: “${latest.wishText}”`;
+  }
 
   renderGoal(snap.communityGoal);
   renderPoll(snap.poll);
@@ -200,7 +218,8 @@ function showCeremonyBanner(ritual: DispatchedRitual): void {
     ritual.actionType !== 'GRAND_CEREMONY' &&
     ritual.actionType !== 'DRAW_FORTUNE' &&
     ritual.actionType !== 'RELEASE_LANTERN' &&
-    ritual.actionType !== 'PERIODIC_CHANT'
+    ritual.actionType !== 'PERIODIC_CHANT' &&
+    ritual.actionType !== 'OFFER_FLOWERS'
   ) {
     return;
   }
@@ -212,6 +231,11 @@ function showCeremonyBanner(ritual: DispatchedRitual): void {
     modalHeadlineEl.textContent = `${ritual.user.nickname} · ${ritual.fortune.title}`;
     modalBodyEl.textContent = ritual.fortune.poem;
     modalSubnoteEl.textContent = `Lời bàn văn hóa: ${ritual.fortune.meaning} (Mang tính giải trí & suy ngẫm văn hóa)`;
+  } else if (ritual.actionType === 'OFFER_FLOWERS') {
+    modalBadgeEl.textContent = '🪷 DÂNG HOA SEN TƯƠI CÚNG PHẬT 🪷';
+    modalHeadlineEl.textContent = `${ritual.user.nickname} dâng đóa sen thanh tịnh`;
+    modalBodyEl.textContent = `“${ritual.wishText || 'Kính nguyện hoa sen nở rộ, lòng người an vui'}”`;
+    modalSubnoteEl.textContent = `+${ritual.meritAwarded} Điểm Tinh Tấn · Cúng dường hoa sen tươi`;
   } else if (ritual.actionType === 'OFFER_GIFT' || ritual.actionType === 'GRAND_CEREMONY') {
     modalBadgeEl.textContent =
       ritual.actionType === 'GRAND_CEREMONY'
@@ -265,6 +289,7 @@ function playRitualSfx(ritual: DispatchedRitual): void {
       break;
     case 'BURN_INCENSE':
     case 'RELEASE_LANTERN':
+    case 'OFFER_FLOWERS':
       audio.playIncenseChime();
       break;
     case 'STRIKE_WOODEN_FISH':
@@ -287,11 +312,17 @@ function connectWebSocket(): void {
 
   ws.onmessage = (ev) => {
     try {
+      audio.unlock(); // Ensure Web Audio unlocks on incoming server events for OBS
       const msg = JSON.parse(String(ev.data)) as ServerToClientWsMessage;
       switch (msg.type) {
         case 'snapshot':
           applyFullSnapshot(msg.snapshot);
           break;
+        case 'prayer': {
+          const p = msg.prayer;
+          prayerTickerTextEl.textContent = `${p.nickname} [${p.category}]: “${p.wishText}”`;
+          break;
+        }
         case 'ritual':
           pillIncenseEl.textContent = String(msg.totals.incenseBurned);
           pillBellEl.textContent = String(msg.totals.bellRings);

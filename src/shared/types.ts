@@ -82,6 +82,8 @@ export type RitualActionType =
   | 'RELEASE_LANTERN'
   | 'DRAW_FORTUNE'
   | 'OFFER_GIFT'
+  | 'OFFER_FLOWERS'
+  | 'TAM_QUAN_ENTER'
   | 'GRAND_CEREMONY'
   | 'CAST_POLL_VOTE'
   | 'PERIODIC_CHANT';
@@ -179,6 +181,29 @@ export interface FloatingLanternItem {
   createdAt: number;
 }
 
+export interface PrayerRegistryItem {
+  id: string;
+  userId: string;
+  nickname: string;
+  wishText: string;
+  category: 'BÌNH AN' | 'SỨC KHỎE' | 'CẦU SIÊU' | 'TRÍ TUỆ' | 'HỒI HƯỚNG';
+  meritAwarded: number;
+  createdAt: number;
+}
+
+export interface LunarDateResult {
+  lunarDay: number;
+  lunarMonth: number;
+  lunarYear: number;
+  isLeapMonth: boolean;
+  canChiYear: string;
+  canChiDay: string;
+  solarDateStr: string;
+  lunarDateStr: string;
+  festivalTitle?: string;
+  isFullMoonOrNewMoon: boolean;
+}
+
 export interface CommunityGoalState {
   id: string;
   title: string;
@@ -228,6 +253,12 @@ export interface TempleSettings {
   ttsMinGiftDiamonds: number;
   ttsReadPrayers: boolean;
   ttsReadFortunes: boolean;
+  fortuneEnabled: boolean;
+  flowerOfferingEnabled: boolean;
+  lunarFestivalAuto: boolean;
+  showSafeZones: boolean;
+  collectivePrayersEnabled: boolean;
+  idleSereneChimes: boolean;
   audioMasterVolume: number;
   audioMusicVolume: number;
   audioSfxVolume: number;
@@ -303,6 +334,8 @@ export interface TempleStateSnapshot {
   recentRituals: DispatchedRitual[];
   rules: EventActionRule[];
   clientPerf: ClientPerfReport[];
+  lunarInfo: LunarDateResult;
+  prayers: PrayerRegistryItem[];
 }
 
 export interface TtsBroadcastPayload {
@@ -320,6 +353,7 @@ export type ServerToClientWsMessage =
   | { type: 'likeBatch'; count: number; totalWoodenFish: number; users: Array<{ id: string; nickname: string }> }
   | { type: 'giftStreakProgress'; userId: string; nickname: string; giftName: string; currentCount: number }
   | { type: 'statePatch'; patch: Partial<TempleStateSnapshot> }
+  | { type: 'prayer'; prayer: PrayerRegistryItem }
   | { type: 'tts'; tts: TtsBroadcastPayload }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string; timestamp: string };
 

@@ -23,7 +23,7 @@ Tài liệu này ghi nhận kết quả kiểm thử tự động, kiểm thử 
 ## 2. Kết Quả Bộ Kiểm Thử Tự Động (`npm test` — Vitest)
 
 - **Lệnh thực thi**: `npm test` (`vitest run`)
-- **Trạng thái**: **20 / 20 Tests PASSED (100%)** trong `255ms` (tổng thời gian chạy `1.02s`).
+- **Trạng thái**: **23 / 23 Tests PASSED (100%)** trong `312ms` (tổng thời gian chạy `1.15s`).
 
 | Nhóm kiểm thử | Số lượng test | Nội dung xác minh (`VERIFIED`) | Kết quả |
 | :--- | :---: | :--- | :---: |
@@ -32,6 +32,7 @@ Tài liệu này ghi nhận kết quả kiểm thử tự động, kiểm thử 
 | **3. Dynamic Rule Engine & Exponential Backoff** | 2 | • Đánh giá luật `EventActionRule` theo độ ưu tiên (`priority`), nội suy biến mẫu (`{{user.nickname}}`, `{{wish}}`) và tôn trọng `cooldownSec`.<br>• Tính toán `computeBackoffWithJitter` có giới hạn trần + nhiễu ngẫu nhiên và chuẩn hóa `@username` TikTok. | ✅ PASS (2/2) |
 | **4. SQLite Persistence, Crash Recovery & TempleStateEngine** | 1 | • Lưu trữ bền vững danh sách Phật tử, Bảng Vinh Danh (`meritPoints`), cấu hình bối cảnh (`GOLDEN_DUSK`, `LOTUS_RAIN`), tạo bản sao lưu JSON (`backups/backup_*.json`) và khôi phục nguyên trạng sau khi đóng và khởi tạo lại Engine. | ✅ PASS (1/1) |
 | **5. HTTP & WebSocket Server Security, Auth & End-to-End Integration** | 7 | • Chỉ lắng nghe trên `127.0.0.1` và phản hồi `/api/health` (`200 OK`).<br>• Từ chối `Origin` lạ với mã `403 Forbidden` (chống CSRF/CSWSH).<br>• Chặn truy cập trái phép vào `/api/admin/*` khi thiếu/sai `X-Admin-Token` với mã `401 Unauthorized`.<br>• Kiểm tra schema bằng Zod, trả về `400 Bad Request` khi dữ liệu ngoài ngưỡng.<br>• Chặn tấn công Path Traversal (`..%2f..%2fpackage.json` $\to$ `404`).<br>• Xuất/nhập trọn bộ cấu hình JSON (`/api/config/export` & `/api/admin/config/import`).<br>• Chạy thử nghiệm tải đột biến 250 sự kiện qua REST API. | ✅ PASS (7/7) |
+| **8. Vietnamese Lunar Calendar, Community Prayer Registry & Cultural Toggles** | 3 | • Tính toán chính xác ngày Âm lịch Việt Nam chuẩn UTC+7, năm Can Chi (Bính Ngọ), nhận diện ngày đại lễ Phật Đản (Vesak 15/4 âm), Vu Lan (15/7 âm) và Rằm/Mùng Một.<br>• Che mờ bảo vệ dữ liệu cá nhân (số điện thoại, email) trong Sổ Lời Nguyện Tập Thể, phân loại nguyện vọng `BÌNH AN`, `SỨC KHỎE`, `CẦU SIÊU`, `TRÍ TUỆ`, `HỒI HƯỚNG`.<br>• Tôn trọng tùy chọn bật/tắt Quẻ Xăm (`fortuneEnabled: false` chuyển thành dâng hương tĩnh tâm) và kích hoạt luật Dâng Hoa Sen Cúng Phật (`OFFER_FLOWERS`). | ✅ PASS (3/3) |
 
 ---
 
@@ -65,15 +66,19 @@ Tài liệu này ghi nhận kết quả kiểm thử tự động, kiểm thử 
 ### Danh mục Ảnh Chụp Màn Hình Thực Tế (`docs/screenshots/`)
 
 1. **[`overlay-1080x1920-night-ceremony.png`](file:///e:/tiktok/docs/screenshots/overlay-1080x1920-night-ceremony.png)**:
-   - Cảnh Chánh Điện ban đêm (`SACRED_NIGHT`), tượng Phật A Di Đà trên đài sen 3 tầng, lư hương đồng tỏa khói, 6 chiếu VIP mạ vàng phía trước, nhân vật bước trên thảm đỏ thực hiện nghi thức **Đảnh Lễ Tam Bái** và bảng vinh danh **Đại Lễ Hào Quang Kim Liên**.
-2. **[`overlay-1080x1920-fortune-oracle.png`](file:///e:/tiktok/docs/screenshots/overlay-1080x1920-fortune-oracle.png)**:
+   - Cảnh Chánh Điện ban đêm (`SACRED_NIGHT`), tượng Phật A Di Đà trên đài sen 3 tầng, câu đối cột lim chữ Hán Nôm & Quốc ngữ, lư hương đồng tỏa khói, hàng ngũ bồ đoàn tọa thiền, nhân vật bước trên thảm đỏ thực hiện nghi thức **Đảnh Lễ Tam Bái** và bảng vinh danh **Đại Lễ Hào Quang Kim Liên**.
+2. **[`overlay-1080x1920-flower-offering.png`](file:///e:/tiktok/docs/screenshots/overlay-1080x1920-flower-offering.png)**:
+   - Nghi thức **Dâng Hoa Sen Tươi Cúng Phật** với banner chúc phúc, hiệu ứng cánh hoa sen hồng rơi và sóng âm chuông chánh điện.
+3. **[`overlay-1080x1920-fortune-oracle.png`](file:///e:/tiktok/docs/screenshots/overlay-1080x1920-fortune-oracle.png)**:
    - Hoạt cảnh rút **Quẻ Xăm Đầu Xuân** (`🎋 QUẺ XĂM ĐẦU XUÂN`) hiển thị thơ lục bát tiếng Việt rõ nét kèm lời bàn văn hóa tích cực.
-3. **[`overlay-1080x1920-dawn-petals.png`](file:///e:/tiktok/docs/screenshots/overlay-1080x1920-dawn-petals.png)**:
+4. **[`overlay-1080x1920-dawn-petals.png`](file:///e:/tiktok/docs/screenshots/overlay-1080x1920-dawn-petals.png)**:
    - Cảnh Hoàng Hôn Vàng Son (`GOLDEN_DUSK`) kết hợp mưa cánh hoa sen (`LOTUS_RAIN`) và dàn Phật tử tọa thiền.
-4. **[`overlay-obs-transparent.png`](file:///e:/tiktok/docs/screenshots/overlay-obs-transparent.png)**:
+5. **[`overlay-1080x1920-safezone.png`](file:///e:/tiktok/docs/screenshots/overlay-1080x1920-safezone.png)**:
+   - Khung viền kiểm thử **TikTok Safe Zones 9:16** (Header 140px, cụm nút bấm bên phải, khay bình luận 280px ở đáy) bảo toàn vùng trung tâm trang nghiêm của Chánh Điện.
+6. **[`overlay-obs-transparent.png`](file:///e:/tiktok/docs/screenshots/overlay-obs-transparent.png)**:
    - Chế độ **OBS Transparent Mode (`?obs=1&transparent=1&hud=minimal`)** tách nền alpha trong suốt hoàn toàn để ghép đè lên nguồn video khác trong OBS Studio.
-5. **[`admin-dashboard-1600x1000.png`](file:///e:/tiktok/docs/screenshots/admin-dashboard-1600x1000.png)**:
-   - Giao diện **Admin Studio Dashboard** với khung xem trước `9:16` trực tiếp, bảng điều khiển kết nối TikTok LIVE, bộ phát sự kiện mô phỏng (Offline Simulator), nút kiểm thử Burst 250 / 1000 events, bộ chỉnh cảnh/ánh sáng, bàn trộn âm thanh (Sound Mixer) và bảng giám sát Telemetry.
+7. **[`admin-dashboard-1600x1000.png`](file:///e:/tiktok/docs/screenshots/admin-dashboard-1600x1000.png)**:
+   - Giao diện **Admin Studio Dashboard** với khung xem trước `9:16` trực tiếp, nút tiền kiểm tra phòng LIVE (`btnVerifyTikTok`), bộ phát sự kiện mô phỏng (Offline Simulator), các nút chuyển đổi nghi lễ văn hóa dân gian, bàn trộn âm thanh (Sound Mixer), Sổ Lời Nguyện thời gian thực và bảng giám sát Telemetry.
 
 ---
 
