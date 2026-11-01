@@ -6,6 +6,14 @@ import type {
 } from '../../shared/types.ts';
 import { sanitizeSpokenName } from './moderation.ts';
 
+export function removeVietnameseTones(str: string): string {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D');
+}
+
 export interface RuleMatchEvaluation {
   matched: boolean;
   rule: EventActionRule;
@@ -15,6 +23,7 @@ export interface RuleMatchEvaluation {
 export class DynamicRuleEngine {
   private rules: EventActionRule[] = [];
   private readonly ruleLastFiredAt: Map<string, number> = new Map();
+  private readonly userRuleLastFiredAt: Map<string, number> = new Map();
 
   constructor(initialRules: readonly EventActionRule[] = []) {
     this.setRules([...initialRules]);
@@ -42,6 +51,9 @@ export class DynamicRuleEngine {
   public deleteRule(ruleId: string): EventActionRule[] {
     this.rules = this.rules.filter((r) => r.id !== ruleId);
     this.ruleLastFiredAt.delete(ruleId);
+    for (const key of this.userRuleLastFiredAt.keys()) {
+      if (key.startsWith(`${ruleId}:`)) this.userRuleLastFiredAt.delete(key);
+    }
     return this.getRules();
   }
 
@@ -53,7 +65,8 @@ export class DynamicRuleEngine {
       if (!rule.enabled) continue;
 
       if (rule.cooldownSec > 0) {
-        const prev = this.ruleLastFiredAt.get(rule.id);
+        const cooldownKey = event.user?.id ? `${rule.id}:${event.user.id}` : rule.id;
+        const prev = this.userRuleLastFiredAt.get(cooldownKey);
         if (prev !== undefined && now - prev < rule.cooldownSec * 1000) {
           continue;
         }
@@ -61,6 +74,8 @@ export class DynamicRuleEngine {
 
       const check = this.evaluateRuleConditions(rule, event);
       if (check.matched) {
+        const cooldownKey = event.user?.id ? `${rule.id}:${event.user.id}` : rule.id;
+        this.userRuleLastFiredAt.set(cooldownKey, now);
         this.ruleLastFiredAt.set(rule.id, now);
         return {
           matched: true,
@@ -106,14 +121,25 @@ export class DynamicRuleEngine {
     if (actual === undefined || actual === null) return false;
 
     switch (cond.op) {
-      case 'equals':
-        return String(actual).toLowerCase() === String(cond.value).toLowerCase();
+      case 'equals': {
+        const actStr = String(actual).toLowerCase();
+        const condStr = String(cond.value).toLowerCase();
+        return actStr === condStr || removeVietnameseTones(actStr) === removeVietnameseTones(condStr);
+      }
       case 'not_equals':
         return String(actual).toLowerCase() !== String(cond.value).toLowerCase();
-      case 'contains':
-        return String(actual).toLowerCase().includes(String(cond.value).toLowerCase());
-      case 'starts_with':
-        return String(actual).toLowerCase().startsWith(String(cond.value).toLowerCase());
+      case 'contains': {
+        const actStr = String(actual).toLowerCase();
+        const condStr = String(cond.value).toLowerCase();
+        if (actStr.includes(condStr)) return true;
+        return removeVietnameseTones(actStr).includes(removeVietnameseTones(condStr));
+      }
+      case 'starts_with': {
+        const actStr = String(actual).toLowerCase();
+        const condStr = String(cond.value).toLowerCase();
+        if (actStr.startsWith(condStr)) return true;
+        return removeVietnameseTones(actStr).startsWith(removeVietnameseTones(condStr));
+      }
       case 'greater_or_equal':
         return Number(actual) >= Number(cond.value);
       case 'less_or_equal':
@@ -159,7 +185,12 @@ export class DynamicRuleEngine {
       'gift.count': String(ctx.giftCount ?? 1),
       merit: String(ctx.merit ?? 10),
       'fortune.ttsSummary': ctx.fortune?.ttsSummary || '',
-      'fortune.title': ctx.fortune?.title || ''
+      'fortune.title': ctx.fortune?.title || '',
+      'fortune.number': String(ctx.fortune?.number ?? ''),
+      'fortune.rank': ctx.fortune?.rank || '',
+      'fortune.meaning': ctx.fortune?.meaning || '',
+      'fortune.poem': ctx.fortune?.poem?.replace(/\n/g, ', ') || '',
+      'fortune.spokenText': ctx.fortune?.ttsSummary || ctx.fortune?.meaning || ''
     };
 
     return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_match, key: string) => {

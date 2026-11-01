@@ -223,6 +223,7 @@ export async function createStudioServer(options?: {
     onReadyToBroadcast: (ttsPayload) => {
       if (ttsPayload.traceId) {
         engine.getEventDebugger().markSynthesized(ttsPayload.traceId, ttsPayload.audioUrl);
+        engine.updateFortuneExecutionStatus(ttsPayload.traceId, 'ENQUEUED', ttsPayload.audioUrl);
       }
       ttsPayload.leaderClientId = currentAudioLeaderId;
       broadcastWs({
@@ -262,6 +263,12 @@ export async function createStudioServer(options?: {
         prayer
       });
       scheduleSnapshotBroadcast();
+    },
+    onFortuneExecutionUpdate: (record) => {
+      broadcastWs({
+        type: 'fortuneExecutionUpdate',
+        record
+      }, 'admin');
     },
     onStateChanged: () => {
       scheduleSnapshotBroadcast();
@@ -546,15 +553,30 @@ export async function createStudioServer(options?: {
 
     // 3. Protected Admin Endpoints (JSON)
     if (pathname.startsWith('/api/admin/')) {
-      if (req.method !== 'POST') {
-        res.writeHead(405).end('Method Not Allowed');
-        return;
-      }
-
       const headerToken = String(req.headers['x-admin-token'] || '');
       if (headerToken !== adminToken) {
         res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: 'Unauthorized: thiếu hoặc sai X-Admin-Token' }));
+        return;
+      }
+
+      if (req.method === 'GET') {
+        if (pathname === '/api/admin/fortunes') {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: true, deck: engine.getFortuneDeck(), total: engine.getFortuneDeck().length }));
+          return;
+        }
+        if (pathname === '/api/admin/fortunes/history') {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: true, executions: engine.getRecentFortuneExecutions() }));
+          return;
+        }
+        res.writeHead(405).end('Method Not Allowed');
+        return;
+      }
+
+      if (req.method !== 'POST') {
+        res.writeHead(405).end('Method Not Allowed');
         return;
       }
 
@@ -717,7 +739,16 @@ export async function createStudioServer(options?: {
 
     ext.send(
       JSON.stringify({
+        type: 'clientInit',
+        clientId: ext.clientId,
+        isAudioLeader: ext.clientId === currentAudioLeaderId
+      } satisfies ServerToClientWsMessage)
+    );
+
+    ext.send(
+      JSON.stringify({
         type: 'snapshot',
+        clientId: ext.clientId,
         snapshot: getFullSnapshot()
       } satisfies ServerToClientWsMessage)
     );
@@ -736,11 +767,13 @@ export async function createStudioServer(options?: {
 
         if (msg.type === 'tracePlaybackStart' && msg.traceId) {
           engine.getEventDebugger().markPlaying(msg.traceId, currentAudioLeaderId);
+          engine.updateFortuneExecutionStatus(msg.traceId, 'PLAYING');
           return;
         }
 
         if (msg.type === 'tracePlaybackEnd' && msg.traceId) {
           engine.getEventDebugger().markCompleted(msg.traceId);
+          engine.updateFortuneExecutionStatus(msg.traceId, 'COMPLETED');
           return;
         }
 
@@ -898,6 +931,36 @@ async function handleAdminAction(
     case '/api/admin/ritual/chant': {
       const ritual = ctx.engine.triggerPeriodicChant();
       return { ritual, snapshot: ctx.getFullSnapshot() };
+    }
+
+    case '/api/admin/fortunes': {
+      if (Array.isArray(body.deck)) {
+        const deck = ctx.engine.saveFortuneDeck(body.deck);
+        return { deck, total: deck.length, snapshot: ctx.getFullSnapshot() };
+      }
+      return { deck: ctx.engine.getFortuneDeck(), total: ctx.engine.getFortuneDeck().length };
+    }
+
+    case '/api/admin/fortunes/test': {
+      const mode = body.mode;
+      const fortuneId = body.fortuneId ? Number(body.fortuneId) : undefined;
+      const ritual = ctx.engine.triggerManualFortuneTest({ mode, fortuneId });
+      return { ritual, snapshot: ctx.getFullSnapshot() };
+    }
+
+    case '/api/admin/fortunes/replay': {
+      const record = ctx.engine.replayLastFortune();
+      return { success: Boolean(record), record, snapshot: ctx.getFullSnapshot() };
+    }
+
+    case '/api/admin/fortunes/stop': {
+      ctx.broadcastWs({ type: 'stopAudio' });
+      ctx.broadcastWs({ type: 'clearTtsQueue' });
+      return { success: true };
+    }
+
+    case '/api/admin/fortunes/history': {
+      return { executions: ctx.engine.getRecentFortuneExecutions() };
     }
 
     case '/api/admin/ritual/flowers': {

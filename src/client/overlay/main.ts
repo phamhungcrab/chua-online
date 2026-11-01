@@ -345,9 +345,16 @@ function connectWebSocket(): void {
       }
       const msg = JSON.parse(String(ev.data)) as ServerToClientWsMessage;
       switch (msg.type) {
+        case 'clientInit':
+          myClientId = msg.clientId;
+          audio.setAudioLeader(Boolean(msg.isAudioLeader));
+          break;
         case 'snapshot':
+          if (msg.clientId) {
+            myClientId = msg.clientId;
+          }
           applyFullSnapshot(msg.snapshot);
-          if (msg.snapshot.audioLeaderClientId && myClientId) {
+          if (myClientId && msg.snapshot.audioLeaderClientId) {
             audio.setAudioLeader(msg.snapshot.audioLeaderClientId === myClientId);
           }
           break;
@@ -403,6 +410,19 @@ function connectWebSocket(): void {
 }
 
 connectWebSocket();
+
+// Unlock Web Audio on any user interaction (essential for Brave Window Capture & browsers)
+if (!isMutedMode) {
+  ['click', 'touchstart', 'keydown'].forEach((evt) => {
+    window.addEventListener(
+      evt,
+      () => {
+        audio.unlock();
+      },
+      { passive: true }
+    );
+  });
+}
 
 // 6. Uptime Timer & Perf Telemetry Reporter (every 1s)
 setInterval(() => {

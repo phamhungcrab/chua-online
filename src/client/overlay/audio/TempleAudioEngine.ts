@@ -418,7 +418,7 @@ export class TempleAudioEngine {
         const next = this.ttsQueue.shift()!;
         this.onPlaybackStarted?.(next.traceId);
 
-        if (next.audioUrl && this.unlocked) {
+        if (next.audioUrl) {
           await this.playAudioUrl(next.audioUrl);
         } else {
           // Zero English speech fallback: play gentle sacred singing bowl chime

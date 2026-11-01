@@ -97,6 +97,21 @@ export interface FortuneStick {
   ttsSummary: string;
 }
 
+export type FortuneReadMode = 'summary' | 'full' | 'poem_meaning';
+
+export interface FortuneExecutionRecord {
+  id: string;
+  timestamp: number;
+  user: { id: string; nickname: string; avatarUrl?: string };
+  fortune: FortuneStick;
+  mode: FortuneReadMode;
+  ttsText?: string;
+  audioUrl?: string | null;
+  status: 'ENQUEUED' | 'PLAYING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+  reason?: string;
+  traceId?: string;
+}
+
 export interface DispatchedRitual {
   id: string;
   actionType: RitualActionType;
@@ -254,6 +269,11 @@ export interface TempleSettings {
   ttsReadPrayers: boolean;
   ttsReadFortunes: boolean;
   fortuneEnabled: boolean;
+  fortuneReadMode?: FortuneReadMode;
+  fortuneUserCooldownSec?: number;
+  fortuneVoice?: 'vi-VN-NamMinhNeural' | 'vi-VN-HoaiMyNeural' | string;
+  fortuneRatePercent?: number;
+  fortuneVolume?: number;
   flowerOfferingEnabled: boolean;
   lunarFestivalAuto: boolean;
   showSafeZones: boolean;
@@ -526,6 +546,9 @@ export interface TempleStateSnapshot {
   audioLeaderClientId?: string | null;
   gitCommit?: string;
   sceneConfig?: SceneConfig;
+  lastFortuneRecord?: FortuneExecutionRecord;
+  recentFortuneExecutions?: FortuneExecutionRecord[];
+  fortuneDeckCount?: number;
 }
 
 export interface TtsBroadcastPayload {
@@ -540,7 +563,9 @@ export interface TtsBroadcastPayload {
 }
 
 export type ServerToClientWsMessage =
-  | { type: 'snapshot'; snapshot: TempleStateSnapshot }
+  | { type: 'clientInit'; clientId: string; isAudioLeader: boolean }
+  | { type: 'snapshot'; snapshot: TempleStateSnapshot; clientId?: string }
+  | { type: 'fortuneExecutionUpdate'; record: FortuneExecutionRecord }
   | { type: 'ritual'; ritual: DispatchedRitual; totals: TempleStateSnapshot['totals']; communityGoal: CommunityGoalState }
   | { type: 'likeBatch'; count: number; totalWoodenFish: number; users: Array<{ id: string; nickname: string }> }
   | { type: 'giftStreakProgress'; userId: string; nickname: string; giftName: string; currentCount: number }

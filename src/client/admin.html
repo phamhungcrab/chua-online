@@ -1015,6 +1015,7 @@
         <nav class="audio-nav-tabs">
           <button type="button" class="audio-tab-btn active" data-tab="tabSoundLibrary">📁 Thư Viện Âm Thanh</button>
           <button type="button" class="audio-tab-btn" data-tab="tabVoiceManager">🎙️ Quản Lý Giọng Đọc (TTS)</button>
+          <button type="button" class="audio-tab-btn" data-tab="tabFortuneOracle">🎋 Quẻ Xăm Văn Hóa &amp; TTS</button>
           <button type="button" class="audio-tab-btn" data-tab="tabVisualMixer">🎛️ Bàn Trộn Âm Thanh &amp; Ducking</button>
           <button type="button" class="audio-tab-btn" data-tab="tabRitualAudioMapping">📜 Điều Phối Nghi Lễ</button>
           <button type="button" class="audio-tab-btn" data-tab="tabAudioScheduler">⏰ Lịch Trình Tự Động</button>
@@ -1338,6 +1339,176 @@
             <button type="button" class="gold" id="btnSaveSchedulerSettings">💾 Lưu Lịch Trình Tự Động</button>
           </div>
         </div>
+
+        <!-- TAB 6: QUẺ XĂM VĂN HÓA & TTS (FORTUNE ORACLE CONTROL CENTER) -->
+        <div class="audio-tab-panel" id="tabFortuneOracle">
+          <div style="display:grid; grid-template-columns: 360px 1fr; gap: 16px; align-items:start;">
+            
+            <!-- Left Column: Settings & Live Action Buttons -->
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="padding:14px; border-radius:10px; background:rgba(0,0,0,0.35); border:1px solid rgba(229,184,91,0.25);">
+                <strong style="color:var(--gold-bright); font-size:14px; display:block; margin-bottom:10px;">
+                  🎋 Cấu Hình Quẻ Xăm &amp; Giọng Đọc
+                </strong>
+                
+                <div style="display:flex; flex-direction:column; gap:8px; font-size:13px; margin-bottom:12px;">
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="chkFortuneOracleEnabled" checked /> 
+                    <span>Bật Tính Năng Quẻ Xăm Dân Gian</span>
+                  </label>
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="checkbox" id="chkReadFortunesSync" checked /> 
+                    <span>Đọc Tóm Tắt Quẻ Xăm Bằng Tiếng Việt (TTS)</span>
+                  </label>
+                </div>
+
+                <div class="field" style="margin-bottom:10px;">
+                  <label for="selFortuneReadMode" style="font-size:12px; font-weight:600; color:var(--gold-bright); display:block; margin-bottom:4px;">
+                    Chế Độ Đọc Quẻ (Voice Scripting):
+                  </label>
+                  <select id="selFortuneReadMode" style="width:100%; font-size:13px; padding:6px 10px;">
+                    <option value="summary">(Khuyên dùng) Đọc Tóm Tắt Ý Nghĩa Cát Tường</option>
+                    <option value="full">Đọc Toàn Bộ (Số Quẻ + 4 Câu Thơ + Lời Bình Văn Hóa)</option>
+                    <option value="poem_meaning">Đọc Bài Thơ &amp; Lời Khuyên Văn Hóa</option>
+                  </select>
+                </div>
+
+                <div class="field" style="margin-bottom:10px;">
+                  <label for="txtFortuneCooldownSec" style="font-size:12px; font-weight:600; color:var(--gold-bright); display:block; margin-bottom:4px;">
+                    Cooldown Từng Người Dùng (giây):
+                  </label>
+                  <input type="number" id="txtFortuneCooldownSec" min="5" max="120" step="1" value="15" style="width:100%; font-size:13px; padding:6px 10px;" />
+                  <span style="font-size:11px; color:var(--muted); display:block; margin-top:3px;">
+                    Mỗi người chỉ xin 1 lần trong khoảng này (tránh spam). Khác người xin được ngay.
+                  </span>
+                </div>
+
+                <div class="field" style="margin-bottom:10px;">
+                  <label for="selFortuneVoice" style="font-size:12px; font-weight:600; color:var(--gold-bright); display:block; margin-bottom:4px;">
+                    Giọng Đọc Quẻ Riêng:
+                  </label>
+                  <select id="selFortuneVoice" style="width:100%; font-size:13px; padding:6px 10px;">
+                    <option value="default">Theo giọng hệ thống Chánh Điện (Mặc định)</option>
+                    <option value="vi-VN-HoaiMyNeural">Hoài My (Nữ truyền cảm, thanh thoát)</option>
+                    <option value="vi-VN-NamMinhNeural">Nam Minh (Nam trầm ấm, trang nghiêm)</option>
+                  </select>
+                </div>
+
+                <div class="field" style="margin-bottom:10px;">
+                  <label for="rngFortuneRate" style="font-size:12px; font-weight:600; color:var(--gold-bright); display:block; margin-bottom:4px;">
+                    Tốc Độ Đọc: <span id="lblFortuneRate" style="color:#fff;">-10%</span>
+                  </label>
+                  <input type="range" id="rngFortuneRate" min="-25" max="25" step="1" value="-10" style="width:100%;" />
+                </div>
+
+                <div class="field" style="margin-bottom:12px;">
+                  <label for="rngFortuneVolume" style="font-size:12px; font-weight:600; color:var(--gold-bright); display:block; margin-bottom:4px;">
+                    Âm Lượng Quẻ Xăm: <span id="lblFortuneVolume" style="color:#fff;">95%</span>
+                  </label>
+                  <input type="range" id="rngFortuneVolume" min="0" max="1" step="0.05" value="0.95" style="width:100%;" />
+                </div>
+
+                <button type="button" class="primary" id="btnSaveFortuneConfig" style="width:100%; padding:8px 12px; font-size:13px; font-weight:bold;">
+                  💾 Lưu Cấu Hình Quẻ Xăm
+                </button>
+              </div>
+
+              <!-- Test & Live Control Buttons -->
+              <div style="padding:14px; border-radius:10px; background:rgba(0,0,0,0.35); border:1px solid rgba(229,184,91,0.25);">
+                <strong style="color:var(--gold-bright); font-size:14px; display:block; margin-bottom:8px;">
+                  ⚡ Điều Khiển &amp; Thử Nghiệm Trực Quan
+                </strong>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <button type="button" class="gold" id="btnTestFortuneDraw" style="font-size:13px; padding:8px 12px; font-weight:bold;">
+                    🎋 Thử Rút Quẻ &amp; Đọc Ngay
+                  </button>
+                  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                    <button type="button" id="btnReplayFortune" style="font-size:12px; padding:6px 8px;">
+                      🔁 Đọc Lại Quẻ Gần Nhất
+                    </button>
+                    <button type="button" id="btnStopFortuneAudio" style="font-size:12px; padding:6px 8px; color:#ff8888;">
+                      ⏹ Dừng Đọc Quẻ
+                    </button>
+                  </div>
+                </div>
+                <div style="font-size:11px; color:var(--muted); margin-top:8px;">
+                  💡 Tương thích Brave Window Capture: Bật cửa sổ Overlay trong Brave và bấm chuột 1 lần vào trang để cấp quyền phát âm thanh tự động.
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Column: Real-Time Execution Log & 32 Sticks Library -->
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              
+              <!-- Real-Time Fortune Execution Log -->
+              <div style="padding:14px; border-radius:10px; background:rgba(0,0,0,0.35); border:1px solid rgba(229,184,91,0.25);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong style="color:var(--gold-bright); font-size:14px;">
+                    📜 Nhật Ký Rút Quẻ &amp; Đọc TTS Thời Gian Thực
+                  </strong>
+                  <button type="button" id="btnRefreshFortuneLog" style="font-size:11px; padding:3px 8px;">
+                    🔄 Làm mới
+                  </button>
+                </div>
+                <div style="max-height:220px; overflow-y:auto; border:1px solid rgba(255,255,255,0.08); border-radius:6px;">
+                  <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+                    <thead style="background:rgba(255,255,255,0.05); color:var(--gold-bright); position:sticky; top:0;">
+                      <tr>
+                        <th style="padding:6px 8px; width:70px;">Thời gian</th>
+                        <th style="padding:6px 8px; width:120px;">Người xin</th>
+                        <th style="padding:6px 8px; width:130px;">Quẻ số</th>
+                        <th style="padding:6px 8px;">Văn bản đọc (TTS)</th>
+                        <th style="padding:6px 8px; width:100px;">Trạng thái</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tblFortuneLogBody">
+                      <tr>
+                        <td colspan="5" style="padding:12px; text-align:center; color:var(--muted);">
+                          Chưa có lượt xin quẻ nào trong phiên này
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Fortune Sticks Library (32 Sticks) -->
+              <div style="padding:14px; border-radius:10px; background:rgba(0,0,0,0.35); border:1px solid rgba(229,184,91,0.25);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+                  <div>
+                    <strong style="color:var(--gold-bright); font-size:14px;">
+                      📚 Danh Mục 32 Quẻ Xăm Văn Hóa Truyền Thống
+                    </strong>
+                    <span style="font-size:12px; color:var(--muted); margin-left:6px;" id="lblFortuneDeckCount">(32 quẻ)</span>
+                  </div>
+                  <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="text" id="txtSearchFortuneDeck" placeholder="Tìm số quẻ, tên quẻ..." style="font-size:12px; padding:4px 8px; width:160px;" />
+                    <button type="button" class="gold" id="btnSaveDeckLibrary" style="font-size:12px; padding:4px 10px;">
+                      💾 Lưu Thư Viện Quẻ
+                    </button>
+                  </div>
+                </div>
+                <div style="max-height:340px; overflow-y:auto; border:1px solid rgba(255,255,255,0.08); border-radius:6px;">
+                  <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+                    <thead style="background:rgba(255,255,255,0.05); color:var(--gold-bright); position:sticky; top:0;">
+                      <tr>
+                        <th style="padding:6px 8px; width:45px;">Số</th>
+                        <th style="padding:6px 8px; width:90px;">Cát/Hung</th>
+                        <th style="padding:6px 8px; width:170px;">Tiêu đề</th>
+                        <th style="padding:6px 8px;">Bài thơ &amp; Lời bình văn hóa</th>
+                        <th style="padding:6px 8px; width:85px; text-align:center;">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tblFortuneDeckBody">
+                      <!-- Populated dynamically -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- 5. Telemetry & Queue Health Dashboard -->
@@ -1564,6 +1735,45 @@
         <button type="button" class="primary" id="btnConfirmResetAction" disabled style="background:#b82b18; border-color:#ff5544; min-width:140px;">
           Xác Nhận Thực Hiện
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Edit Fortune Stick -->
+  <div class="modal-backdrop" id="modalEditFortune">
+    <div class="modal-dialog" style="max-width: 580px;">
+      <h3 style="color:var(--gold-bright);">🎋 Chỉnh Sửa Quẻ Xăm Văn Hóa</h3>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+        <div style="display:grid; grid-template-columns: 80px 140px 1fr; gap:8px;">
+          <div>
+            <label style="font-size:11px; color:var(--muted); display:block;">Số Quẻ</label>
+            <input type="number" id="editFortuneNumber" style="width:100%; font-size:13px;" readonly />
+          </div>
+          <div>
+            <label style="font-size:11px; color:var(--muted); display:block;">Cát / Hung</label>
+            <input type="text" id="editFortuneRank" style="width:100%; font-size:13px;" />
+          </div>
+          <div>
+            <label style="font-size:11px; color:var(--muted); display:block;">Tiêu Đề Quẻ</label>
+            <input type="text" id="editFortuneTitle" style="width:100%; font-size:13px;" />
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--muted); display:block;">Bài Thơ (4 câu, xuống dòng mỗi câu)</label>
+          <textarea id="editFortunePoem" rows="4" style="width:100%; font-size:13px; font-family:serif; line-height:1.5;"></textarea>
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--muted); display:block;">Ý Nghĩa &amp; Lời Khuyên Văn Hóa (Được đọc khi chọn chế độ toàn bộ / lời bình)</label>
+          <textarea id="editFortuneMeaning" rows="2" style="width:100%; font-size:13px; line-height:1.4;"></textarea>
+        </div>
+        <div>
+          <label style="font-size:11px; color:var(--muted); display:block;">Văn Bản Tóm Tắt Đọc TTS (Được đọc khi chọn chế độ tóm tắt)</label>
+          <textarea id="editFortuneTts" rows="2" style="width:100%; font-size:13px; line-height:1.4;"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions" style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" id="btnCancelEditFortune">Hủy</button>
+        <button type="button" class="gold" id="btnSaveSingleFortune">💾 Lưu Quẻ</button>
       </div>
     </div>
   </div>

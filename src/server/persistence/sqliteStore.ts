@@ -5,7 +5,8 @@ import {
   BUILTIN_SCENE_PRESETS,
   DEFAULT_EVENT_RULES,
   DEFAULT_SCENE_CONFIG,
-  DEFAULT_SETTINGS
+  DEFAULT_SETTINGS,
+  FORTUNE_STICKS_DECK
 } from '../../shared/constants.ts';
 import type {
   AudioCategory,
@@ -13,6 +14,7 @@ import type {
   AudioTrackItem,
   DispatchedRitual,
   EventActionRule,
+  FortuneStick,
   OfferingKind,
   PrayerRegistryItem,
   SceneAssetItem,
@@ -204,7 +206,21 @@ export class SqlitePersistenceStore {
     }
     try {
       const parsed = JSON.parse(row.value_json);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : [...DEFAULT_EVENT_RULES];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Migration check for fortune chat rule conditions to ensure full keywords
+        const fortuneRule = parsed.find((r) => r.id === 'rule_fortune_chat');
+        const defaultFortuneRule = DEFAULT_EVENT_RULES.find((r) => r.id === 'rule_fortune_chat');
+        if (
+          fortuneRule &&
+          defaultFortuneRule &&
+          (!fortuneRule.conditions || fortuneRule.conditions.length < defaultFortuneRule.conditions.length)
+        ) {
+          fortuneRule.conditions = [...defaultFortuneRule.conditions];
+          this.saveRules(parsed);
+        }
+        return parsed;
+      }
+      return [...DEFAULT_EVENT_RULES];
     } catch {
       return [...DEFAULT_EVENT_RULES];
     }
@@ -216,6 +232,46 @@ export class SqlitePersistenceStore {
         'INSERT INTO kv_store (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at'
       )
       .run('rules', JSON.stringify(rules), Date.now());
+  }
+
+  public loadFortuneDeck(): FortuneStick[] {
+    const row = this.db
+      .prepare('SELECT value_json FROM kv_store WHERE key = ?')
+      .get('fortune_deck') as { value_json: string } | undefined;
+    if (!row) {
+      const defaults = [...FORTUNE_STICKS_DECK];
+      this.saveFortuneDeck(defaults);
+      return defaults;
+    }
+    try {
+      const parsed = JSON.parse(row.value_json);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // If deck in DB has fewer sticks than builtin (e.g. earlier prototype had 18, now 32),
+        // merge any new default sticks by number
+        if (parsed.length < FORTUNE_STICKS_DECK.length) {
+          const existingNums = new Set(parsed.map((p) => p.number));
+          for (const stick of FORTUNE_STICKS_DECK) {
+            if (!existingNums.has(stick.number)) {
+              parsed.push(stick);
+            }
+          }
+          parsed.sort((a: FortuneStick, b: FortuneStick) => a.number - b.number);
+          this.saveFortuneDeck(parsed);
+        }
+        return parsed;
+      }
+      return [...FORTUNE_STICKS_DECK];
+    } catch {
+      return [...FORTUNE_STICKS_DECK];
+    }
+  }
+
+  public saveFortuneDeck(deck: FortuneStick[]): void {
+    this.db
+      .prepare(
+        'INSERT INTO kv_store (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at'
+      )
+      .run('fortune_deck', JSON.stringify(deck), Date.now());
   }
 
   public loadTotals(): PersistedTotals {

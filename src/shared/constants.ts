@@ -35,6 +35,11 @@ export const DEFAULT_SETTINGS: TempleSettings = {
   ttsReadPrayers: true,
   ttsReadFortunes: true,
   fortuneEnabled: true,
+  fortuneReadMode: 'summary',
+  fortuneUserCooldownSec: 15,
+  fortuneVoice: 'vi-VN-HoaiMyNeural',
+  fortuneRatePercent: -10,
+  fortuneVolume: 0.95,
   flowerOfferingEnabled: true,
   lunarFestivalAuto: true,
   showSafeZones: false,
@@ -103,6 +108,14 @@ export const FORTUNE_STICKS_DECK: readonly FortuneStick[] = [
     ttsSummary: 'Quẻ số 1, Thượng Thượng Cát, Nhật Xuất Đông Phương. Chúc thí chủ tâm sáng chí bền, gia đạo bình an.'
   },
   {
+    number: 3,
+    rank: 'Thượng Cát',
+    title: 'Đăng Sơn Kiến Nhật — Leo Núi Thấy Mặt Trời',
+    poem: 'Leo dốc đường xa chớ ngại ngần\nĐỉnh cao mây trắng rạng bình minh\nKiên tâm bền chí qua gian khó\nÁnh sáng ngời soi vạn nẻo tình.',
+    meaning: 'Bền chí vượt khó khăn ban đầu sẽ thấy kết quả rạng rỡ và cơ hội mới mở ra.',
+    ttsSummary: 'Quẻ số 3, Thượng Cát, Đăng Sơn Kiến Nhật. Kiên tâm bền chí, vượt khó thành công.'
+  },
+  {
     number: 6,
     rank: 'Thượng Cát',
     title: 'Xuân Phong Đắc Ý — Gió Xuân Thuận Buồm',
@@ -119,12 +132,28 @@ export const FORTUNE_STICKS_DECK: readonly FortuneStick[] = [
     ttsSummary: 'Quẻ số 8, Thượng Cát, Kim Liên Khai Nở. Giữ lòng thanh tịnh, vạn sự hanh thông.'
   },
   {
+    number: 10,
+    rank: 'Đại Cát',
+    title: 'Chi Lan Ngọc Thụ — Cây Ngọc Cành Vàng',
+    poem: 'Cây lành đượm mát bóng bờ ao\nCon cháu ngoan hiền dạ ước ao\nGia phong gìn giữ nền đạo đức\nPhước đức dài lâu sáng rực màu.',
+    meaning: 'Nền tảng đạo đức gia đình là gốc rễ của mọi sự phát đạt và bình yên.',
+    ttsSummary: 'Quẻ số 10, Đại Cát, Chi Lan Ngọc Thụ. Gia phong gìn giữ, phúc đức dài lâu.'
+  },
+  {
     number: 12,
     rank: 'Đại Cát',
     title: 'Long Vân Tương Hội — Rồng Mây Gặp Gỡ',
     poem: 'Rồng thiêng gặp hội tầng mây xanh\nChăm chỉ chuyên cần rạng rỡ danh\nKiên tâm rèn luyện bền ý chí\nHoa thơm trái ngọt khắp gia đình.',
     meaning: 'Những nỗ lực học tập và rèn luyện bền bỉ đang bước vào giai đoạn thuận lợi.',
     ttsSummary: 'Quẻ số 12, Đại Cát, Long Vân Tương Hội. Chăm chỉ chuyên cần, học hành sự nghiệp tiến tới.'
+  },
+  {
+    number: 15,
+    rank: 'Trung Cát',
+    title: 'Thủy Tĩnh Liên Hương — Nước Lặng Sen Thơm',
+    poem: 'Mặt hồ phẳng lặng gợn làn lăn\nHương sen thanh khiết đượm tình thân\nĐừng vội tranh đua điều hư ảo\nBình tâm giữ lấy phúc muôn phần.',
+    meaning: 'Khuyên giữ tâm điềm tĩnh, không nên vội vã chạy theo hư danh.',
+    ttsSummary: 'Quẻ số 15, Trung Cát, Thủy Tĩnh Liên Hương. Giữ tâm phẳng lặng, hương thơm tự tỏa.'
   },
   {
     number: 18,
@@ -135,12 +164,36 @@ export const FORTUNE_STICKS_DECK: readonly FortuneStick[] = [
     ttsSummary: 'Quẻ số 18, Thượng Cát, Minh Nguyệt Đương Không. Gia đình hòa thuận, tâm an vạn sự lành.'
   },
   {
+    number: 20,
+    rank: 'Thượng Cát',
+    title: 'Đắc Ý Xuân Phong — Ngựa Tốt Đường Dài',
+    poem: 'Đường xa ngựa tốt vó băng băng\nGặp bạn đồng tâm chí tỏ tường\nTương trợ lẫn nhau xây sự nghiệp\nNắng vàng rực rỡ khắp muôn phương.',
+    meaning: 'Gặp được bạn hữu đồng hành cùng chí hướng tốt đẹp.',
+    ttsSummary: 'Quẻ số 20, Thượng Cát, Đắc Ý Xuân Phong. Gặp bạn đồng hành, sự nghiệp tiến bước.'
+  },
+  {
     number: 24,
     rank: 'Trung Cát',
     title: 'Vũ Quá Thiên Thanh — Mưa Tạnh Trời Trong',
     poem: 'Mưa qua trời lại sáng trong ngần\nThử thách lùi xa đón phúc phần\nGiữ vững lòng thành đừng nóng vội\nBình tâm bước tiếp vững đôi chân.',
     meaning: 'Sau cơn mưa trời lại sáng. Khuyên giữ sự điềm tĩnh và kiên nhẫn trước mọi việc.',
     ttsSummary: 'Quẻ số 24, Trung Cát, Vũ Quá Thiên Thanh. Sau cơn mưa trời lại sáng, hãy giữ tâm điềm tĩnh.'
+  },
+  {
+    number: 28,
+    rank: 'Trung Cát',
+    title: 'Hàm Thiềm Ẩn Nguyệt — Trăng Núp Sau Mây',
+    poem: 'Mây mờ thoáng phủ vầng trăng trong\nTạm lắng tâm tư giữa cõi lòng\nChờ đợi thời cơ nuôi dưỡng sức\nTrời quang mây tạnh thỏa niềm mong.',
+    meaning: 'Giai đoạn cần kiên nhẫn tích lũy nội lực, tránh vội vã quyết định.',
+    ttsSummary: 'Quẻ số 28, Trung Cát, Hàm Thiềm Ẩn Nguyệt. Kiên nhẫn tích lũy, đợi lúc trời quang.'
+  },
+  {
+    number: 30,
+    rank: 'Đại Cát',
+    title: 'Tích Thiện Phùng Duyên — Gieo Lành Gặp Duyên',
+    poem: 'Gieo hạt mầm lành giữa sớm mai\nCây xanh trĩu quả tháng năm dài\nNgười gieo tâm thiện phước vô lượng\nẤm no hạnh phúc sáng tương lai.',
+    meaning: 'Sống có ích, biết giúp đỡ người khác sẽ tích tụ nhiều phúc báo.',
+    ttsSummary: 'Quẻ số 30, Đại Cát, Tích Thiện Phùng Duyên. Gieo hạt mầm lành, phước đức vô lượng.'
   },
   {
     number: 32,
@@ -159,12 +212,36 @@ export const FORTUNE_STICKS_DECK: readonly FortuneStick[] = [
     ttsSummary: 'Quẻ số 36, Thượng Thượng Cát, Phúc Tinh Cao Chiếu. Lòng hiếu thảo mang lại trăm điều lành.'
   },
   {
+    number: 40,
+    rank: 'Thượng Cát',
+    title: 'Cao Sơn Lưu Thủy — Núi Cao Sông Dài',
+    poem: 'Đàn xưa tấu khúc nhạc tri âm\nTri kỷ tương phùng tỏ dạ thâm\nChia sẻ niềm vui cùng nỗi nhớ\nTình thâm nghĩa nặng ấm quanh năm.',
+    meaning: 'Trân quý tình bạn chân thành và những người cùng chí hướng.',
+    ttsSummary: 'Quẻ số 40, Thượng Cát, Cao Sơn Lưu Thủy. Trân quý bạn hiền, tình thâm nghĩa nặng.'
+  },
+  {
+    number: 42,
+    rank: 'Trung Cát',
+    title: 'Chuyên Cần Đắc Quả — Cần Cù Gặt Hái',
+    poem: 'Ruộng sâu chăm bón lúc cày bừa\nChẳng quản mồ hôi nắng sớm trưa\nMùa màng trĩu hạt bông vàng óng\nNo ấm yên vui thỏa ước mơ.',
+    meaning: 'Cần cù bù thông minh, chăm chỉ làm việc ắt có quả ngọt.',
+    ttsSummary: 'Quẻ số 42, Trung Cát, Chuyên Cần Đắc Quả. Chăm chỉ cần cù, ắt gặt quả ngọt.'
+  },
+  {
     number: 45,
     rank: 'Trung Cát',
     title: 'Khê Thủy Lưu Trường — Suối Nguồn Chảy Mãi',
     poem: 'Dòng suối trong lành chảy bốn phương\nTích tiểu thành đại vững con đường\nChắt chiu từng bước không xao nhãng\nBiển rộng sông dài thỏa chí vương.',
     meaning: 'Khuyên tích lũy kiến thức và kinh nghiệm từng chút mỗi ngày như dòng suối nhỏ.',
     ttsSummary: 'Quẻ số 45, Trung Cát, Khê Thủy Lưu Trường. Tích tiểu thành đại, kiên trì ắt thành công.'
+  },
+  {
+    number: 48,
+    rank: 'Đại Cát',
+    title: 'Quang Minh Chính Đại — Lối Thẳng Đường Ngay',
+    poem: 'Đi đường ngay thẳng bước an nhiên\nChẳng sợ phong ba chẳng lụy phiền\nTâm sáng lòng trong trời đất chứng\nDanh thơm để lại phúc đời truyền.',
+    meaning: 'Giữ sự trung thực và minh bạch, lòng không có gì phải e ngại.',
+    ttsSummary: 'Quẻ số 48, Đại Cát, Quang Minh Chính Đại. Lòng ngay dạ thẳng, an nhiên tự tại.'
   },
   {
     number: 52,
@@ -175,12 +252,28 @@ export const FORTUNE_STICKS_DECK: readonly FortuneStick[] = [
     ttsSummary: 'Quẻ số 52, Thượng Cát, Ngọc Xuất Côn Sơn. Ngọc mài thêm sáng, gặp bạn hiền nâng đỡ.'
   },
   {
+    number: 56,
+    rank: 'Thượng Cát',
+    title: 'Đăng Cao Vọng Viễn — Nhìn Xa Trông Rộng',
+    poem: 'Lên đài ngắm cảnh bóng mây trôi\nTầm mắt thênh thang trải ngút đồi\nĐừng để chuyện phiền ngăn bước tiến\nTương lai xán lạn rạng niềm vui.',
+    meaning: 'Mở rộng tầm nhìn, đừng bận tâm những tranh cãi nhỏ nhen.',
+    ttsSummary: 'Quẻ số 56, Thượng Cát, Đăng Cao Vọng Viễn. Tầm nhìn rộng mở, bước tiến hanh thông.'
+  },
+  {
     number: 60,
     rank: 'Đại Cát',
     title: 'Bách Hoa Tề Phóng — Trăm Hoa Đua Nở',
     poem: 'Trăm hoa đua nở đón xuân sang\nNắng ấm chan hòa khắp xóm làng\nSáng tạo đổi mới nhiều ý đẹp\nTương lai tươi sáng bước thênh thang.',
     meaning: 'Khuyến khích tinh thần cởi mở, sáng tạo và học hỏi điều mới.',
     ttsSummary: 'Quẻ số 60, Đại Cát, Bách Hoa Tề Phóng. Tinh thần sáng tạo, tương lai rộng mở.'
+  },
+  {
+    number: 64,
+    rank: 'Trung Cát',
+    title: 'An Cư Lạc Nghiệp — Mái Ấm Bình Yên',
+    poem: 'Nhà tranh ấm áp vẹn ân tình\nBếp lửa hồng soi ánh bình minh\nĐồng vợ đồng chồng cùng gắng sức\nMái ấm bình yên rạng chữ tình.',
+    meaning: 'Trân trọng tổ ấm gia đình, nền tảng của sự nghiệp an lành.',
+    ttsSummary: 'Quẻ số 64, Trung Cát, An Cư Lạc Nghiệp. Gia đình êm ấm, cùng nhau dựng xây.'
   },
   {
     number: 68,
@@ -191,12 +284,28 @@ export const FORTUNE_STICKS_DECK: readonly FortuneStick[] = [
     ttsSummary: 'Quẻ số 68, Đại Cát, Lộc Mã Đồng Hương. Giữ trọn chữ tín, công việc thuận lợi.'
   },
   {
+    number: 70,
+    rank: 'Thượng Cát',
+    title: 'Khổ Tận Cam Lai — Hết Cực Đến Vui',
+    poem: 'Gian lao thử thách đã lùi xa\nVui đón tin vui rộn cửa nhà\nTrải mấy phong trần nay vững bước\nCuộc đời tươi đẹp ngát ngàn hoa.',
+    meaning: 'Vượt qua giai đoạn thử thách, thời điểm an vui đang tới.',
+    ttsSummary: 'Quẻ số 70, Thượng Cát, Khổ Tận Cam Lai. Vượt qua thử thách, niềm vui đón chào.'
+  },
+  {
     number: 72,
     rank: 'Thượng Cát',
     title: 'Thanh Phong Minh Nguyệt — Gió Mát Trăng Thanh',
     poem: 'Gió mát trăng thanh cảnh thái bình\nBuông bỏ hơn thua giữ tâm minh\nThảnh thơi ngắm nhìn mây cuối núi\nAn nhiên tự tại trọn ân tình.',
     meaning: 'Nhắc nhở biết buông bỏ căng thẳng, giữ sự cân bằng giữa công việc và nghỉ ngơi.',
     ttsSummary: 'Quẻ số 72, Thượng Cát, Thanh Phong Minh Nguyệt. Tâm hồn thư thái, an nhiên tự tại.'
+  },
+  {
+    number: 75,
+    rank: 'Đại Cát',
+    title: 'Tri Túc Tâm Thường Lạc — Biết Đủ Tâm Thường Vui',
+    poem: 'Biết đủ là vui giữa cõi đời\nChẳng màng danh lợi cuốn chơi vơi\nTâm thanh lòng tịnh thân an lạc\nNụ cười rạng rỡ nở muôn nơi.',
+    meaning: 'Lòng biết đủ là nguồn gốc lớn nhất của hạnh phúc và bình an.',
+    ttsSummary: 'Quẻ số 75, Đại Cát, Tri Túc Tâm Thường Lạc. Biết đủ là vui, thân tâm an lạc.'
   },
   {
     number: 79,
@@ -215,6 +324,14 @@ export const FORTUNE_STICKS_DECK: readonly FortuneStick[] = [
     ttsSummary: 'Quẻ số 81, Thượng Cát, Nguyệt Nhập Trung Thiên. Sống nhân ái sẻ chia, cuộc sống an vui.'
   },
   {
+    number: 85,
+    rank: 'Thượng Cát',
+    title: 'Văn Nhược Tinh Hà — Sao Sáng Soi Đêm',
+    poem: 'Đèn sách chuyên tâm trải tháng ngày\nDùi mài kinh sử luyện tương lai\nTrí tuệ mở mang bừng ánh sáng\nCông danh rạng rỡ nét trang đài.',
+    meaning: 'Khuyến khích sự học hành, trau dồi tri thức và hoàn thiện bản thân.',
+    ttsSummary: 'Quẻ số 85, Thượng Cát, Văn Nhược Tinh Hà. Trau dồi tri thức, trí tuệ rạng ngời.'
+  },
+  {
     number: 88,
     rank: 'Đại Cát',
     title: 'Song Hỷ Lâm Môn — Niềm Vui Gõ Cửa',
@@ -225,7 +342,7 @@ export const FORTUNE_STICKS_DECK: readonly FortuneStick[] = [
   {
     number: 95,
     rank: 'Thượng Cát',
-    title: 'Hải Khut Thiên Không — Biển Rộng Trời Cao',
+    title: 'Hải Khoát Thiên Không — Biển Rộng Trời Cao',
     poem: 'Biển rộng cá bơi thỏa sức vươn\nTrời cao chim sải cánh muôn phương\nBao dung độ lượng tâm rộng mở\nHạnh phúc bình an khắp nẻo đường.',
     meaning: 'Lòng bao dung và tầm nhìn rộng mở giúp vượt qua mọi chuyện nhỏ nhặt.',
     ttsSummary: 'Quẻ số 95, Thượng Cát, Hải Khoát Thiên Không. Tâm lượng bao dung, bình an tự tại.'
@@ -251,9 +368,20 @@ export const DEFAULT_EVENT_RULES: readonly EventActionRule[] = [
     conditions: [
       { field: 'event.comment', op: 'contains', value: 'xin xăm' },
       { field: 'event.comment', op: 'contains', value: 'xin xam' },
+      { field: 'event.comment', op: 'contains', value: 'xin quẻ' },
+      { field: 'event.comment', op: 'contains', value: 'xin que' },
+      { field: 'event.comment', op: 'contains', value: 'rút quẻ' },
+      { field: 'event.comment', op: 'contains', value: 'rut que' },
+      { field: 'event.comment', op: 'contains', value: 'rút xăm' },
+      { field: 'event.comment', op: 'contains', value: 'rut xam' },
       { field: 'event.comment', op: 'contains', value: 'gieo quẻ' },
       { field: 'event.comment', op: 'contains', value: 'gieo que' },
-      { field: 'event.comment', op: 'contains', value: 'rút quẻ' }
+      { field: 'event.comment', op: 'contains', value: 'gieo xăm' },
+      { field: 'event.comment', op: 'contains', value: 'gieo xam' },
+      { field: 'event.comment', op: 'contains', value: 'bốc quẻ' },
+      { field: 'event.comment', op: 'contains', value: 'boc que' },
+      { field: 'event.comment', op: 'contains', value: 'bốc xăm' },
+      { field: 'event.comment', op: 'contains', value: 'boc xam' }
     ],
     actionType: 'DRAW_FORTUNE',
     actionParams: {

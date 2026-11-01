@@ -12,6 +12,8 @@ import type {
   DispatchedRitual,
   EventActionRule,
   FloatingLanternItem,
+  FortuneExecutionRecord,
+  FortuneReadMode,
   FortuneStick,
   GiftTier,
   LivePollState,
@@ -101,6 +103,10 @@ export class TempleStateEngine {
   private ritualSeq = 0;
   private chantIndex = 0;
   private chantTimer: ReturnType<typeof setInterval> | null = null;
+  private fortuneDeck: FortuneStick[] = [];
+  private readonly fortuneUserCooldowns = new UserCooldownTracker(1000);
+  private readonly recentFortuneExecutions: FortuneExecutionRecord[] = [];
+  private fortuneExecSeq = 0;
 
   private readonly onRitualCallback?: (
     ritual: DispatchedRitual,
@@ -119,6 +125,7 @@ export class TempleStateEngine {
     currentCount: number;
   }) => void;
   private readonly onPrayerCallback?: (prayer: PrayerRegistryItem) => void;
+  private readonly onFortuneExecutionUpdateCallback?: (record: FortuneExecutionRecord) => void;
   private readonly onStateChangedCallback?: () => void;
 
   constructor(options: {
@@ -141,6 +148,7 @@ export class TempleStateEngine {
       currentCount: number;
     }) => void;
     onPrayer?: (prayer: PrayerRegistryItem) => void;
+    onFortuneExecutionUpdate?: (record: FortuneExecutionRecord) => void;
     onStateChanged?: () => void;
   }) {
     this.store = options.store;
@@ -149,11 +157,13 @@ export class TempleStateEngine {
     this.onLikeBatchCallback = options.onLikeBatch;
     this.onStreakProgressCallback = options.onStreakProgress;
     this.onPrayerCallback = options.onPrayer;
+    this.onFortuneExecutionUpdateCallback = options.onFortuneExecutionUpdate;
     this.onStateChangedCallback = options.onStateChanged;
 
     this.settings = this.store.loadSettings();
     this.totals = this.store.loadTotals();
     this.sceneConfig = this.store.loadActiveSceneConfig();
+    this.fortuneDeck = this.store.loadFortuneDeck();
     this.communityGoal.currentValue = this.totals.incenseBurned;
     this.ruleEngine = new DynamicRuleEngine(this.store.loadRules());
     this.prayers = this.store.loadRecentPrayers(40);
@@ -673,8 +683,40 @@ export class TempleStateEngine {
 
     if (actionType === 'DRAW_FORTUNE') {
       if (this.settings.fortuneEnabled) {
-        fortune = FORTUNE_STICKS_DECK[Math.floor(Math.random() * FORTUNE_STICKS_DECK.length)];
-        this.totals.fortunesDrawn += 1;
+        // Enforce per-user cooldown on fortune stick draws
+        const userCooldownSec = this.settings.fortuneUserCooldownSec ?? 15;
+        const cooldownOk = this.fortuneUserCooldowns.checkAndRecord(
+          event.user.id,
+          userCooldownSec * 1000,
+          event.timestamp
+        );
+        if (!cooldownOk) {
+          const traceId = (event as any).traceId;
+          if (traceId) {
+            this.eventDebugger.markDropped(
+              traceId,
+              `Phật tử vừa xin quẻ, vui lòng chờ ${userCooldownSec}s`
+            );
+          }
+          this.recordFortuneExecution({
+            id: `fort_exec_${Date.now()}_${++this.fortuneExecSeq}`,
+            timestamp: Date.now(),
+            user: { id: event.user.id, nickname: event.user.nickname, avatarUrl: event.user.avatarUrl },
+            fortune: this.fortuneDeck[0] || FORTUNE_STICKS_DECK[0],
+            mode: this.settings.fortuneReadMode || 'summary',
+            status: 'SKIPPED',
+            reason: `Phật tử vừa xin quẻ, vui lòng chờ ${userCooldownSec} giây trước khi xin tiếp.`,
+            traceId
+          });
+          // Gracefully transform into incense prayer when on individual cooldown
+          actionType = 'BURN_INCENSE';
+          ruleName = 'Dâng Hương Tịnh Tâm';
+        } else {
+          fortune = this.fortuneDeck.length > 0
+            ? this.fortuneDeck[Math.floor(Math.random() * this.fortuneDeck.length)]
+            : FORTUNE_STICKS_DECK[Math.floor(Math.random() * FORTUNE_STICKS_DECK.length)];
+          this.totals.fortunesDrawn += 1;
+        }
       } else {
         // Fallback when cultural fortune is disabled in settings: transform into incense prayer
         actionType = 'BURN_INCENSE';
@@ -729,32 +771,89 @@ export class TempleStateEngine {
       (rule.actionType !== 'RELEASE_LANTERN' || this.settings.ttsReadPrayers) &&
       (rule.actionType !== 'BURN_INCENSE' || this.settings.ttsReadFreeComments);
 
-    if (shouldReadTts && rule.actionParams.ttsTemplate) {
-      ttsText = DynamicRuleEngine.interpolateTemplate(rule.actionParams.ttsTemplate, {
-        nickname: v.nickname,
-        wish,
-        merit,
-        fortune
-      });
-      const traceId = (event as any).traceId;
-      this.tts.enqueue({
-        userId: v.id,
-        text: ttsText,
-        voice: this.settings.ttsVoice,
-        ratePercent: this.settings.ttsRatePercent,
-        pitchHz: this.settings.ttsPitchHz,
-        priority: rule.priority,
-        ttlMs: 90_000,
+    const traceId = (event as any).traceId;
+
+    if (shouldReadTts) {
+      if (rule.actionType === 'DRAW_FORTUNE' && fortune) {
+        const readMode = this.settings.fortuneReadMode || 'summary';
+        const spokenName = sanitizeSpokenName(v.nickname);
+        if (readMode === 'full') {
+          const poemLines = fortune.poem.split('\n').join(', ');
+          ttsText = `Phật tử ${spokenName} xin được quẻ số ${fortune.number}, ${fortune.rank}, ${fortune.title}. Bài thơ: ${poemLines}. Lời khuyên văn hóa: ${fortune.meaning}`;
+        } else if (readMode === 'poem_meaning') {
+          const poemLines = fortune.poem.split('\n').join(', ');
+          ttsText = `Quẻ số ${fortune.number}, ${fortune.title}. Bài thơ: ${poemLines}. Lời khuyên văn hóa: ${fortune.meaning}`;
+        } else {
+          ttsText = fortune.ttsSummary
+            ? `Phật tử ${spokenName} bốc được ${fortune.ttsSummary}`
+            : `Phật tử ${spokenName} bốc được quẻ số ${fortune.number}, ${fortune.rank}, ${fortune.title}. Lời khuyên: ${fortune.meaning}`;
+        }
+        const voice = this.settings.fortuneVoice || this.settings.ttsVoice || 'vi-VN-HoaiMyNeural';
+        const ratePercent = this.settings.fortuneRatePercent ?? this.settings.ttsRatePercent;
+        this.tts.enqueue({
+          userId: v.id,
+          text: ttsText,
+          voice,
+          ratePercent,
+          pitchHz: this.settings.ttsPitchHz,
+          priority: 85,
+          ttlMs: 90_000,
+          ritualId: `fortune_${Date.now()}`,
+          traceId
+        });
+        if (traceId) {
+          this.eventDebugger.markQueued(traceId, voice, ttsText, this.tts.getQueueDepth());
+        }
+        this.recordFortuneExecution({
+          id: `fort_exec_${Date.now()}_${++this.fortuneExecSeq}`,
+          timestamp: Date.now(),
+          user: { id: v.id, nickname: v.nickname, avatarUrl: event.user.avatarUrl },
+          fortune,
+          mode: readMode,
+          ttsText,
+          status: 'ENQUEUED',
+          reason: 'Đã đưa vào hàng đợi phát âm thanh',
+          traceId
+        });
+      } else if (rule.actionParams.ttsTemplate) {
+        ttsText = DynamicRuleEngine.interpolateTemplate(rule.actionParams.ttsTemplate, {
+          nickname: v.nickname,
+          wish,
+          merit,
+          fortune
+        });
+        this.tts.enqueue({
+          userId: v.id,
+          text: ttsText,
+          voice: this.settings.ttsVoice,
+          ratePercent: this.settings.ttsRatePercent,
+          pitchHz: this.settings.ttsPitchHz,
+          priority: rule.priority,
+          ttlMs: 90_000,
+          traceId
+        });
+        if (traceId) {
+          this.eventDebugger.markQueued(
+            traceId,
+            this.settings.ttsVoice,
+            ttsText,
+            this.tts.getQueueDepth()
+          );
+        }
+      }
+    } else if (rule.actionType === 'DRAW_FORTUNE' && fortune) {
+      this.recordFortuneExecution({
+        id: `fort_exec_${Date.now()}_${++this.fortuneExecSeq}`,
+        timestamp: Date.now(),
+        user: { id: v.id, nickname: v.nickname, avatarUrl: event.user.avatarUrl },
+        fortune,
+        mode: this.settings.fortuneReadMode || 'summary',
+        status: 'SKIPPED',
+        reason: !this.settings.ttsReadFortunes
+          ? 'Đã tắt tùy chọn Đọc Tóm Tắt Quẻ Xăm Văn Hóa'
+          : 'Hệ thống âm thanh TTS đang tắt',
         traceId
       });
-      if (traceId) {
-        this.eventDebugger.markQueued(
-          traceId,
-          this.settings.ttsVoice,
-          ttsText,
-          this.tts.getQueueDepth()
-        );
-      }
     }
 
     return this.dispatchRitual({
@@ -1055,8 +1154,170 @@ export class TempleStateEngine {
       lunarInfo: getVietnameseLunarInfo(),
       prayers: [...this.prayers].slice(0, 30),
       eventTraces: this.eventDebugger.getRecentTraces(50),
-      sceneConfig: JSON.parse(JSON.stringify(this.sceneConfig))
+      sceneConfig: JSON.parse(JSON.stringify(this.sceneConfig)),
+      lastFortuneRecord: this.recentFortuneExecutions[0],
+      recentFortuneExecutions: [...this.recentFortuneExecutions].slice(0, 15),
+      fortuneDeckCount: this.fortuneDeck.length
     };
+  }
+
+  public recordFortuneExecution(record: FortuneExecutionRecord): void {
+    this.recentFortuneExecutions.unshift(record);
+    if (this.recentFortuneExecutions.length > 30) {
+      this.recentFortuneExecutions.length = 30;
+    }
+    this.onFortuneExecutionUpdateCallback?.(record);
+  }
+
+  public updateFortuneExecutionStatus(
+    traceId: string,
+    status: FortuneExecutionRecord['status'],
+    audioUrl?: string | null
+  ): void {
+    const item = this.recentFortuneExecutions.find((r) => r.traceId === traceId);
+    if (item) {
+      item.status = status;
+      if (audioUrl !== undefined) item.audioUrl = audioUrl;
+      this.onFortuneExecutionUpdateCallback?.(item);
+    }
+  }
+
+  public getFortuneDeck(): FortuneStick[] {
+    return [...this.fortuneDeck];
+  }
+
+  public saveFortuneDeck(deck: FortuneStick[]): FortuneStick[] {
+    this.fortuneDeck = [...deck];
+    this.store.saveFortuneDeck(this.fortuneDeck);
+    this.onStateChangedCallback?.();
+    return this.getFortuneDeck();
+  }
+
+  public getRecentFortuneExecutions(): FortuneExecutionRecord[] {
+    return [...this.recentFortuneExecutions];
+  }
+
+  public triggerManualFortuneTest(options?: { mode?: FortuneReadMode; fortuneId?: number }): DispatchedRitual {
+    const user: NormalizedUser = {
+      id: `admin_tester_${Date.now()}`,
+      uniqueId: 'admin_test',
+      nickname: 'Đạo Hữu Thử Quẻ',
+      avatarUrl: ''
+    };
+    let fortune: FortuneStick;
+    if (options?.fortuneId) {
+      const found = this.fortuneDeck.find((f) => f.number === options.fortuneId);
+      fortune = found || this.fortuneDeck[0] || FORTUNE_STICKS_DECK[0];
+    } else {
+      fortune = this.fortuneDeck.length > 0
+        ? this.fortuneDeck[Math.floor(Math.random() * this.fortuneDeck.length)]
+        : FORTUNE_STICKS_DECK[Math.floor(Math.random() * FORTUNE_STICKS_DECK.length)];
+    }
+    this.totals.fortunesDrawn += 1;
+    this.store.saveTotals(this.totals);
+
+    const v = this.ensureSeatedViewer(user, {
+      meritDelta: 10,
+      wishText: `Quẻ số ${fortune.number}: ${fortune.rank}`
+    });
+
+    const readMode = options?.mode || this.settings.fortuneReadMode || 'summary';
+    const spokenName = sanitizeSpokenName(v.nickname);
+    let ttsText: string;
+    if (readMode === 'full') {
+      const poemLines = fortune.poem.split('\n').join(', ');
+      ttsText = `Phật tử ${spokenName} xin được quẻ số ${fortune.number}, ${fortune.rank}, ${fortune.title}. Bài thơ: ${poemLines}. Ý nghĩa văn hóa: ${fortune.meaning}`;
+    } else if (readMode === 'poem_meaning') {
+      const poemLines = fortune.poem.split('\n').join(', ');
+      ttsText = `Quẻ số ${fortune.number}, ${fortune.title}. Lời thơ: ${poemLines}. Lời khuyên văn hóa: ${fortune.meaning}`;
+    } else {
+      ttsText = fortune.ttsSummary
+        ? `Phật tử ${spokenName} bốc được ${fortune.ttsSummary}`
+        : `Phật tử ${spokenName} bốc được quẻ số ${fortune.number}, ${fortune.rank}, ${fortune.title}. Lời khuyên: ${fortune.meaning}`;
+    }
+
+    const traceId = `trace_fortune_test_${Date.now()}`;
+    const voice = this.settings.fortuneVoice || this.settings.ttsVoice || 'vi-VN-HoaiMyNeural';
+    const ratePercent = this.settings.fortuneRatePercent ?? this.settings.ttsRatePercent;
+
+    if (this.settings.ttsEnabled && this.settings.ttsReadFortunes) {
+      this.tts.enqueue({
+        userId: v.id,
+        text: ttsText,
+        voice,
+        ratePercent,
+        pitchHz: this.settings.ttsPitchHz,
+        priority: 85,
+        ttlMs: 90_000,
+        ritualId: `fortune_${Date.now()}`,
+        traceId
+      });
+      this.eventDebugger.markQueued(traceId, voice, ttsText, this.tts.getQueueDepth());
+    }
+
+    const record: FortuneExecutionRecord = {
+      id: `fort_exec_${Date.now()}_${++this.fortuneExecSeq}`,
+      timestamp: Date.now(),
+      user: { id: v.id, nickname: v.nickname, avatarUrl: user.avatarUrl },
+      fortune,
+      mode: readMode,
+      ttsText,
+      status: this.settings.ttsEnabled && this.settings.ttsReadFortunes ? 'ENQUEUED' : 'SKIPPED',
+      reason: this.settings.ttsEnabled && this.settings.ttsReadFortunes
+        ? 'Thử nghiệm Admin: Đã đưa vào hàng đợi phát âm thanh'
+        : 'Tắt đọc TTS quẻ trong cấu hình',
+      traceId
+    };
+    this.recordFortuneExecution(record);
+
+    return this.dispatchRitual({
+      actionType: 'DRAW_FORTUNE',
+      priority: 85,
+      ruleId: 'manual_fortune_test',
+      ruleName: 'Thử Rút Quẻ Văn Hóa',
+      user,
+      skin: v.skin,
+      wishText: `Quẻ số ${fortune.number}: ${fortune.title}`,
+      fortune,
+      ttsText,
+      meritAwarded: 10
+    });
+  }
+
+  public replayLastFortune(): FortuneExecutionRecord | null {
+    const lastWithFortune = this.recentFortuneExecutions.find((f) => f.fortune && f.ttsText);
+    if (!lastWithFortune || !lastWithFortune.ttsText) return null;
+
+    const traceId = `trace_replay_${Date.now()}`;
+    const voice = this.settings.fortuneVoice || this.settings.ttsVoice || 'vi-VN-HoaiMyNeural';
+    const ratePercent = this.settings.fortuneRatePercent ?? this.settings.ttsRatePercent;
+
+    this.tts.enqueue({
+      userId: lastWithFortune.user.id,
+      text: lastWithFortune.ttsText,
+      voice,
+      ratePercent,
+      pitchHz: this.settings.ttsPitchHz,
+      priority: 90,
+      ttlMs: 90_000,
+      ritualId: `replay_${Date.now()}`,
+      traceId
+    });
+    this.eventDebugger.markQueued(traceId, voice, lastWithFortune.ttsText, this.tts.getQueueDepth());
+
+    const replayRecord: FortuneExecutionRecord = {
+      id: `fort_exec_${Date.now()}_${++this.fortuneExecSeq}`,
+      timestamp: Date.now(),
+      user: lastWithFortune.user,
+      fortune: lastWithFortune.fortune,
+      mode: lastWithFortune.mode,
+      ttsText: lastWithFortune.ttsText,
+      status: 'ENQUEUED',
+      reason: 'Đọc lại quẻ gần nhất từ Admin',
+      traceId
+    };
+    this.recordFortuneExecution(replayRecord);
+    return replayRecord;
   }
 
   public triggerSereneIdleAction(): DispatchedRitual | null {

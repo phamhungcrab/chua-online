@@ -6,6 +6,8 @@ import { DEFAULT_SCENE_CONFIG } from '../../shared/constants.ts';
 import type {
   EventActionRule,
   EventTraceItem,
+  FortuneExecutionRecord,
+  FortuneStick,
   SceneAssetItem,
   SceneConfig,
   SceneLayerConfig,
@@ -244,6 +246,43 @@ function renderSnapshot(snap: TempleStateSnapshot): void {
 
     const chkReadFortunes = document.getElementById('chkReadFortunes') as HTMLInputElement | null;
     if (chkReadFortunes) chkReadFortunes.checked = Boolean(s.ttsReadFortunes);
+
+    const chkFortuneOracleEnabled = document.getElementById('chkFortuneOracleEnabled') as HTMLInputElement | null;
+    if (chkFortuneOracleEnabled) chkFortuneOracleEnabled.checked = Boolean(s.fortuneEnabled);
+
+    const chkReadFortunesSync = document.getElementById('chkReadFortunesSync') as HTMLInputElement | null;
+    if (chkReadFortunesSync) chkReadFortunesSync.checked = Boolean(s.ttsReadFortunes);
+
+    const selFortuneReadMode = document.getElementById('selFortuneReadMode') as HTMLSelectElement | null;
+    if (selFortuneReadMode && s.fortuneReadMode) selFortuneReadMode.value = s.fortuneReadMode;
+
+    const txtFortuneCooldownSec = document.getElementById('txtFortuneCooldownSec') as HTMLInputElement | null;
+    if (txtFortuneCooldownSec) txtFortuneCooldownSec.value = String(s.fortuneUserCooldownSec ?? 15);
+
+    const selFortuneVoice = document.getElementById('selFortuneVoice') as HTMLSelectElement | null;
+    if (selFortuneVoice) selFortuneVoice.value = s.fortuneVoice || 'default';
+
+    const rngFortuneRate = document.getElementById('rngFortuneRate') as HTMLInputElement | null;
+    if (rngFortuneRate) {
+      rngFortuneRate.value = String(s.fortuneRatePercent ?? -10);
+      const lbl = document.getElementById('lblFortuneRate');
+      if (lbl) lbl.textContent = `${s.fortuneRatePercent ?? -10}%`;
+    }
+
+    const rngFortuneVolume = document.getElementById('rngFortuneVolume') as HTMLInputElement | null;
+    if (rngFortuneVolume) {
+      rngFortuneVolume.value = String(s.fortuneVolume ?? 0.95);
+      const lbl = document.getElementById('lblFortuneVolume');
+      if (lbl) lbl.textContent = `${Math.round((s.fortuneVolume ?? 0.95) * 100)}%`;
+    }
+
+    if (snap.recentFortuneExecutions) {
+      renderFortuneExecutions(snap.recentFortuneExecutions);
+    }
+    if (snap.fortuneDeckCount !== undefined) {
+      const lblCount = document.getElementById('lblFortuneDeckCount');
+      if (lblCount) lblCount.textContent = `(${snap.fortuneDeckCount} quẻ)`;
+    }
 
     const chkModStrict = document.getElementById('chkModerationStrict') as HTMLInputElement | null;
     if (chkModStrict) chkModStrict.checked = Boolean(s.moderationEnabled);
@@ -1184,6 +1223,8 @@ function connectAdminWs(): void {
         activeSceneConfig = JSON.parse(JSON.stringify(msg.sceneConfig));
         updateSceneEditorUI();
         renderSceneEditorCanvas();
+      } else if (msg.type === 'fortuneExecutionUpdate') {
+        upsertFortuneExecution(msg.record);
       }
     } catch {
       // ignore
@@ -2392,7 +2433,340 @@ function initSceneStudio(): void {
   void loadScenePresets();
 }
 
+// ======================================================================
+// FORTUNE ORACLE & VIETNAMESE TTS CONTROL CENTER
+// ======================================================================
+let currentFortuneDeck: FortuneStick[] = [];
+let localFortuneExecutions: FortuneExecutionRecord[] = [];
+let editingFortuneStick: FortuneStick | null = null;
+
+function escapeHtml(str: string): string {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function renderFortuneExecutions(executions: FortuneExecutionRecord[]): void {
+  localFortuneExecutions = [...executions];
+  const tbody = document.getElementById('tblFortuneLogBody');
+  if (!tbody) return;
+
+  if (executions.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="padding:12px; text-align:center; color:var(--muted);">Chưa có lượt xin quẻ nào trong phiên này</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = executions
+    .map((item) => {
+      const timeStr = new Date(item.timestamp).toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+      let badgeHtml = '';
+      switch (item.status) {
+        case 'ENQUEUED':
+          badgeHtml = '<span style="background:rgba(229,184,91,0.25); color:#ffd700; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:11px;">⏳ Đang chờ</span>';
+          break;
+        case 'PLAYING':
+          badgeHtml = '<span style="background:rgba(80,200,120,0.3); color:#55ff88; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:11px;">▶ Đang đọc</span>';
+          break;
+        case 'COMPLETED':
+          badgeHtml = '<span style="background:rgba(40,160,80,0.25); color:#88ffaa; padding:2px 6px; border-radius:4px; font-size:11px;">✓ Đã đọc xong</span>';
+          break;
+        case 'SKIPPED':
+          badgeHtml = `<span style="background:rgba(128,128,128,0.25); color:#aaa; padding:2px 6px; border-radius:4px; font-size:11px;" title="${escapeHtml(item.reason || '')}">⊘ Bỏ qua</span>`;
+          break;
+        case 'FAILED':
+          badgeHtml = `<span style="background:rgba(220,50,50,0.25); color:#ff6666; padding:2px 6px; border-radius:4px; font-size:11px;" title="${escapeHtml(item.reason || '')}">✗ Lỗi</span>`;
+          break;
+      }
+
+      const fortDesc = item.fortune ? `Số ${item.fortune.number} · ${escapeHtml(item.fortune.rank)}` : '(Không có)';
+      const textPreview = item.ttsText
+        ? `"${escapeHtml(item.ttsText)}"`
+        : `<span style="color:var(--muted); font-style:italic;">${escapeHtml(item.reason || 'Không tạo TTS')}</span>`;
+
+      return `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+          <td style="padding:6px 8px; color:var(--muted);">${timeStr}</td>
+          <td style="padding:6px 8px; font-weight:600; color:var(--text);">${escapeHtml(item.user.nickname || 'Phật tử')}</td>
+          <td style="padding:6px 8px; color:var(--gold-bright);">${fortDesc}</td>
+          <td style="padding:6px 8px; line-height:1.3; font-size:11px;">${textPreview}</td>
+          <td style="padding:6px 8px;">${badgeHtml}</td>
+        </tr>
+      `;
+    })
+    .join('');
+}
+
+function upsertFortuneExecution(record: FortuneExecutionRecord): void {
+  const idx = localFortuneExecutions.findIndex((e) => e.id === record.id || (e.traceId && e.traceId === record.traceId));
+  if (idx >= 0) {
+    localFortuneExecutions[idx] = { ...localFortuneExecutions[idx], ...record };
+  } else {
+    localFortuneExecutions.unshift(record);
+    if (localFortuneExecutions.length > 30) localFortuneExecutions.length = 30;
+  }
+  renderFortuneExecutions(localFortuneExecutions);
+}
+
+async function loadFortuneDeck(): Promise<void> {
+  try {
+    const res = await callAdminApi('/api/admin/fortunes', {});
+    if (Array.isArray(res.deck)) {
+      currentFortuneDeck = res.deck;
+      renderFortuneDeckTable();
+      const lblCount = document.getElementById('lblFortuneDeckCount');
+      if (lblCount) lblCount.textContent = `(${currentFortuneDeck.length} quẻ)`;
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function renderFortuneDeckTable(): void {
+  const tbody = document.getElementById('tblFortuneDeckBody');
+  if (!tbody) return;
+
+  const search = (document.getElementById('txtSearchFortuneDeck') as HTMLInputElement | null)?.value.trim().toLowerCase() || '';
+
+  const filtered = currentFortuneDeck.filter((stick) => {
+    if (!search) return true;
+    return (
+      String(stick.number).includes(search) ||
+      stick.title.toLowerCase().includes(search) ||
+      stick.rank.toLowerCase().includes(search) ||
+      stick.meaning.toLowerCase().includes(search)
+    );
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="padding:16px; text-align:center; color:var(--muted);">Không tìm thấy quẻ xăm phù hợp</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered
+    .map((stick) => {
+      const poemEscaped = escapeHtml(stick.poem).replace(/\n/g, '<br/>');
+      return `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+          <td style="padding:6px 8px; font-weight:bold; color:var(--gold-bright); text-align:center;">${stick.number}</td>
+          <td style="padding:6px 8px;"><span style="color:#f6c86a; background:rgba(246,200,106,0.12); padding:2px 5px; border-radius:4px; font-size:11px;">${escapeHtml(stick.rank)}</span></td>
+          <td style="padding:6px 8px; font-weight:600; color:var(--text);">${escapeHtml(stick.title)}</td>
+          <td style="padding:6px 8px; line-height:1.35; font-size:11px;">
+            <div style="font-family:serif; color:#ffddaa; margin-bottom:3px;">${poemEscaped}</div>
+            <div style="color:var(--muted);"><b>Ý nghĩa:</b> ${escapeHtml(stick.meaning)}</div>
+          </td>
+          <td style="padding:6px 8px; text-align:center;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <button type="button" class="btn-edit-fortune" data-stick-num="${stick.number}" style="font-size:11px; padding:2px 6px;">✏ Sửa</button>
+              <button type="button" class="btn-test-single-fortune gold" data-stick-num="${stick.number}" style="font-size:11px; padding:2px 6px;">🔊 Thử Đọc</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  tbody.querySelectorAll<HTMLButtonElement>('.btn-edit-fortune').forEach((btn) => {
+    btn.onclick = () => {
+      const num = Number(btn.getAttribute('data-stick-num'));
+      const stick = currentFortuneDeck.find((s) => s.number === num);
+      if (stick) openEditFortuneModal(stick);
+    };
+  });
+
+  tbody.querySelectorAll<HTMLButtonElement>('.btn-test-single-fortune').forEach((btn) => {
+    btn.onclick = async () => {
+      const num = Number(btn.getAttribute('data-stick-num'));
+      try {
+        await callAdminApi('/api/admin/fortunes/test', { fortuneId: num });
+        showToast(`Đã phát thử quẻ số ${num}`);
+      } catch (e: any) {
+        showToast(`Lỗi: ${e.message}`);
+      }
+    };
+  });
+}
+
+function openEditFortuneModal(stick: FortuneStick): void {
+  editingFortuneStick = stick;
+  const modal = document.getElementById('modalEditFortune');
+  const inpNum = document.getElementById('editFortuneNumber') as HTMLInputElement | null;
+  const inpRank = document.getElementById('editFortuneRank') as HTMLInputElement | null;
+  const inpTitle = document.getElementById('editFortuneTitle') as HTMLInputElement | null;
+  const inpPoem = document.getElementById('editFortunePoem') as HTMLTextAreaElement | null;
+  const inpMeaning = document.getElementById('editFortuneMeaning') as HTMLTextAreaElement | null;
+  const inpTts = document.getElementById('editFortuneTts') as HTMLTextAreaElement | null;
+
+  if (inpNum) inpNum.value = String(stick.number);
+  if (inpRank) inpRank.value = stick.rank;
+  if (inpTitle) inpTitle.value = stick.title;
+  if (inpPoem) inpPoem.value = stick.poem;
+  if (inpMeaning) inpMeaning.value = stick.meaning;
+  if (inpTts) inpTts.value = stick.ttsSummary || '';
+
+  modal?.classList.add('active');
+}
+
+function initFortuneOracleControl(): void {
+  const chkOracle = document.getElementById('chkFortuneOracleEnabled') as HTMLInputElement | null;
+  const chkSync = document.getElementById('chkReadFortunesSync') as HTMLInputElement | null;
+  const selMode = document.getElementById('selFortuneReadMode') as HTMLSelectElement | null;
+  const txtCooldown = document.getElementById('txtFortuneCooldownSec') as HTMLInputElement | null;
+  const selVoice = document.getElementById('selFortuneVoice') as HTMLSelectElement | null;
+  const rngRate = document.getElementById('rngFortuneRate') as HTMLInputElement | null;
+  const lblRate = document.getElementById('lblFortuneRate');
+  const rngVol = document.getElementById('rngFortuneVolume') as HTMLInputElement | null;
+  const lblVol = document.getElementById('lblFortuneVolume');
+  const btnSave = document.getElementById('btnSaveFortuneConfig');
+
+  if (rngRate && lblRate) {
+    rngRate.oninput = () => {
+      lblRate.textContent = `${rngRate.value}%`;
+    };
+  }
+
+  if (rngVol && lblVol) {
+    rngVol.oninput = () => {
+      lblVol.textContent = `${Math.round(Number(rngVol.value) * 100)}%`;
+    };
+  }
+
+  // Two-way sync with primary settings checkboxes
+  if (chkOracle) {
+    chkOracle.onchange = () => {
+      const primary = document.getElementById('chkFortune') as HTMLInputElement | null;
+      if (primary) primary.checked = chkOracle.checked;
+    };
+  }
+  if (chkSync) {
+    chkSync.onchange = () => {
+      const primary = document.getElementById('chkReadFortunes') as HTMLInputElement | null;
+      if (primary) primary.checked = chkSync.checked;
+    };
+  }
+
+  if (btnSave) {
+    btnSave.onclick = async () => {
+      try {
+        const payload: Record<string, any> = {
+          fortuneEnabled: chkOracle ? chkOracle.checked : true,
+          ttsReadFortunes: chkSync ? chkSync.checked : true,
+          fortuneReadMode: selMode ? selMode.value : 'summary',
+          fortuneUserCooldownSec: txtCooldown ? Number(txtCooldown.value) || 15 : 15,
+          fortuneVoice: selVoice && selVoice.value !== 'default' ? selVoice.value : undefined,
+          fortuneRatePercent: rngRate ? Number(rngRate.value) : -10,
+          fortuneVolume: rngVol ? Number(rngVol.value) : 0.95
+        };
+        const res = await callAdminApi('/api/admin/settings', payload);
+        renderSnapshot(res.snapshot);
+        showToast('✓ Đã lưu cấu hình Quẻ Xăm Văn Hóa & TTS');
+      } catch (e: any) {
+        showToast(`Lỗi lưu: ${e.message}`);
+      }
+    };
+  }
+
+  document.getElementById('btnTestFortuneDraw')?.addEventListener('click', async () => {
+    try {
+      const mode = selMode ? selMode.value : 'summary';
+      const res = await callAdminApi('/api/admin/fortunes/test', { mode });
+      if (res.snapshot) renderSnapshot(res.snapshot);
+      showToast('🎋 Đã phát lệnh thử rút quẻ & gửi đọc TTS');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  });
+
+  document.getElementById('btnReplayFortune')?.addEventListener('click', async () => {
+    try {
+      const res = await callAdminApi('/api/admin/fortunes/replay', {});
+      if (res.snapshot) renderSnapshot(res.snapshot);
+      showToast('🔁 Đang đọc lại quẻ gần nhất');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  });
+
+  document.getElementById('btnStopFortuneAudio')?.addEventListener('click', async () => {
+    try {
+      await callAdminApi('/api/admin/fortunes/stop', {});
+      showToast('⏹ Đã dừng âm thanh đọc quẻ');
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  });
+
+  document.getElementById('btnRefreshFortuneLog')?.addEventListener('click', async () => {
+    try {
+      const res = await callAdminApi('/api/admin/fortunes/history', {});
+      if (Array.isArray(res.executions)) {
+        renderFortuneExecutions(res.executions);
+        showToast('✓ Đã làm mới nhật ký rút quẻ');
+      }
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  });
+
+  const txtSearch = document.getElementById('txtSearchFortuneDeck') as HTMLInputElement | null;
+  if (txtSearch) {
+    txtSearch.oninput = () => {
+      renderFortuneDeckTable();
+    };
+  }
+
+  document.getElementById('btnSaveDeckLibrary')?.addEventListener('click', async () => {
+    try {
+      const res = await callAdminApi('/api/admin/fortunes', { deck: currentFortuneDeck });
+      if (res.snapshot) renderSnapshot(res.snapshot);
+      showToast(`✓ Đã lưu ${currentFortuneDeck.length} quẻ xăm vào cơ sở dữ liệu`);
+    } catch (e: any) {
+      showToast(`Lỗi lưu thư viện: ${e.message}`);
+    }
+  });
+
+  // Modal handlers
+  document.getElementById('btnCancelEditFortune')?.addEventListener('click', () => {
+    document.getElementById('modalEditFortune')?.classList.remove('active');
+    editingFortuneStick = null;
+  });
+
+  document.getElementById('btnSaveSingleFortune')?.addEventListener('click', async () => {
+    if (!editingFortuneStick) return;
+    const inpRank = document.getElementById('editFortuneRank') as HTMLInputElement | null;
+    const inpTitle = document.getElementById('editFortuneTitle') as HTMLInputElement | null;
+    const inpPoem = document.getElementById('editFortunePoem') as HTMLTextAreaElement | null;
+    const inpMeaning = document.getElementById('editFortuneMeaning') as HTMLTextAreaElement | null;
+    const inpTts = document.getElementById('editFortuneTts') as HTMLTextAreaElement | null;
+
+    editingFortuneStick.rank = inpRank?.value || editingFortuneStick.rank;
+    editingFortuneStick.title = inpTitle?.value || editingFortuneStick.title;
+    editingFortuneStick.poem = inpPoem?.value || editingFortuneStick.poem;
+    editingFortuneStick.meaning = inpMeaning?.value || editingFortuneStick.meaning;
+    editingFortuneStick.ttsSummary = inpTts?.value || editingFortuneStick.ttsSummary;
+
+    try {
+      const res = await callAdminApi('/api/admin/fortunes', { deck: currentFortuneDeck });
+      if (res.snapshot) renderSnapshot(res.snapshot);
+      renderFortuneDeckTable();
+      document.getElementById('modalEditFortune')?.classList.remove('active');
+      showToast(`✓ Đã lưu thay đổi cho quẻ số ${editingFortuneStick.number}`);
+      editingFortuneStick = null;
+    } catch (e: any) {
+      showToast(`Lỗi lưu: ${e.message}`);
+    }
+  });
+}
+
 connectAdminWs();
 void loadAudioTracks();
 void loadPlaylists();
 initSceneStudio();
+initFortuneOracleControl();
+void loadFortuneDeck();
