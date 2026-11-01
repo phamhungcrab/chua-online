@@ -245,6 +245,71 @@ async function runE2eQa(): Promise<void> {
       detail: `Leader: "${audioLeaderText}", Free Comments: "${freeCommentsText}"`
     });
 
+    // ==========================================
+    // 1b. SCENE STUDIO & 9:16 VISUAL EDITOR TESTS
+    // ==========================================
+    console.log('[E2E QA] Testing Visual Scene Studio 9:16 and Layer Stack...');
+
+    // Step 8e: Check Scene Studio Canvas & Controls
+    const hasSceneStudio = (await adminPage.locator('#sceneStudioSection').count()) > 0;
+    const hasEditorCanvas = (await adminPage.locator('#sceneEditorCanvas').count()) > 0;
+    const anchorChipCount = await adminPage.locator('#anchorChipsContainer [data-anchor]').count();
+    results.push({
+      step: 'Scene Studio Section 3b & 9:16 Canvas Present',
+      passed: hasSceneStudio && hasEditorCanvas && anchorChipCount >= 6,
+      detail: `Studio: ${hasSceneStudio}, Canvas: ${hasEditorCanvas}, Anchor chips: ${anchorChipCount}`
+    });
+
+    // Step 8f: Test Subtabs Switching (Layers, Anchors, Assets, Visual)
+    await adminPage.click('.audio-tab-btn[data-scenetab="tabLayerStack"]');
+    await adminPage.waitForTimeout(300);
+    const layerRowCount = await adminPage.locator('#layerTableBody tr').count();
+
+    await adminPage.click('.audio-tab-btn[data-scenetab="tabAnchorsConfig"]');
+    await adminPage.waitForTimeout(300);
+    const kneelVal = await adminPage.locator('#inpCeremonyKneelY').inputValue();
+
+    await adminPage.click('.audio-tab-btn[data-scenetab="tabSceneAssets"]');
+    await adminPage.waitForTimeout(300);
+    const hasUploader = (await adminPage.locator('#btnUploadSceneAsset').count()) > 0;
+
+    await adminPage.click('.audio-tab-btn[data-scenetab="tabVisualEditor"]');
+    await adminPage.waitForTimeout(300);
+
+    results.push({
+      step: 'Scene Studio Subtabs & Layer Table Navigation',
+      passed: layerRowCount >= 8 && Number(kneelVal) >= 960 && hasUploader,
+      detail: `Layers found: ${layerRowCount}, Kneel Y: ${kneelVal} (guardrail >= 960), Uploader found: ${hasUploader}`
+    });
+
+    // Step 8g: Anchor Interaction & Coordinates Tuning
+    await adminPage.click('#anchorChipsContainer [data-anchor="incenseBurner"]');
+    await adminPage.waitForTimeout(200);
+    const activeChipText = await adminPage.locator('.active-anchor-chip').innerText();
+    const curX = await adminPage.locator('#numAnchorX').inputValue();
+
+    // Adjust X slider
+    await adminPage.locator('#rngAnchorX').fill('560');
+    await adminPage.locator('#rngAnchorX').dispatchEvent('input');
+    await adminPage.waitForTimeout(200);
+    const updatedX = await adminPage.locator('#selectedAnchorCoords').innerText();
+
+    results.push({
+      step: 'Visual Anchor Selection & Slider Coordination',
+      passed: activeChipText.includes('Lư Hương') && updatedX.includes('560'),
+      detail: `Selected: "${activeChipText}", Before X: ${curX}, After X: "${updatedX}"`
+    });
+
+    // Step 8h: Live Hot-Swapping via Apply to LIVE
+    await adminPage.click('#btnApplySceneToLive');
+    await adminPage.waitForTimeout(600);
+    const toastText = await adminPage.locator('#toastBar').innerText();
+    results.push({
+      step: 'Apply Scene to LIVE (Hot-Swap WebSocket Broadcast)',
+      passed: toastText.includes('LIVE') || toastText.includes('phát'),
+      detail: `Toast notification: "${toastText}"`
+    });
+
     // Step 9: Capture Admin Screenshot
     const adminScreenshotPath = path.join(screenshotsDir, 'e2e_audio_admin.png');
     await adminPage.screenshot({ path: adminScreenshotPath, fullPage: true });

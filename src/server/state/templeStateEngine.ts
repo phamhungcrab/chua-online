@@ -21,6 +21,7 @@ import type {
   PrayerRegistryItem,
   QueueMetrics,
   RitualActionType,
+  SceneConfig,
   SeatedViewer,
   SimulatorStatus,
   TempleSettings,
@@ -62,6 +63,7 @@ export class TempleStateEngine {
 
   private settings: TempleSettings;
   private totals: PersistedTotals;
+  private sceneConfig: SceneConfig;
   private readonly startedAt = Date.now();
   private readonly viewers: Map<string, SeatedViewer> = new Map();
   private readonly lanterns: FloatingLanternItem[] = [];
@@ -151,6 +153,7 @@ export class TempleStateEngine {
 
     this.settings = this.store.loadSettings();
     this.totals = this.store.loadTotals();
+    this.sceneConfig = this.store.loadActiveSceneConfig();
     this.communityGoal.currentValue = this.totals.incenseBurned;
     this.ruleEngine = new DynamicRuleEngine(this.store.loadRules());
     this.prayers = this.store.loadRecentPrayers(40);
@@ -949,7 +952,9 @@ export class TempleStateEngine {
   }
 
   public getMetrics(): QueueMetrics {
-    const ttsMetrics = this.tts.getMetrics();
+    const ttsMetrics = this.tts
+      ? this.tts.getMetrics()
+      : { ttsQueueDepth: 0, ttsDroppedTotal: 0, ttsProcessedTotal: 0, ttsCacheHits: 0 };
     return {
       ...ttsMetrics,
       eventsAcceptedTotal: this.eventsAcceptedTotal,
@@ -962,6 +967,47 @@ export class TempleStateEngine {
 
   public getEventDebugger(): LiveEventDebugger {
     return this.eventDebugger;
+  }
+
+  public getSceneConfig(): SceneConfig {
+    return this.sceneConfig;
+  }
+
+  public updateSceneConfig(config: Partial<SceneConfig>): SceneConfig {
+    const merged: SceneConfig = {
+      ...this.sceneConfig,
+      ...config,
+      updatedAt: Date.now()
+    };
+    if (config.layers) {
+      merged.layers = [...config.layers];
+    }
+    if (config.anchors) {
+      merged.anchors = {
+        ...this.sceneConfig.anchors,
+        ...config.anchors
+      };
+      // Validation & clamp safety: ceremony kneeling anchor must not be inside altar (y >= 960)
+      if (merged.anchors.ceremony) {
+        merged.anchors.ceremony.kneelY = Math.max(960, Math.min(1400, Number(merged.anchors.ceremony.kneelY) || 1060));
+        merged.anchors.ceremony.kneelX = Math.max(300, Math.min(780, Number(merged.anchors.ceremony.kneelX) || 540));
+      }
+      if (merged.anchors.congregation) {
+        merged.anchors.congregation.yTop = Math.max(1100, Number(merged.anchors.congregation.yTop) || 1248);
+      }
+      if (merged.anchors.buddhaStatue) {
+        merged.anchors.buddhaStatue.x = Math.max(200, Math.min(880, Number(merged.anchors.buddhaStatue.x) || 540));
+        merged.anchors.buddhaStatue.y = Math.max(200, Math.min(700, Number(merged.anchors.buddhaStatue.y) || 520));
+      }
+      if (merged.anchors.incenseBurner) {
+        merged.anchors.incenseBurner.x = Math.max(200, Math.min(880, Number(merged.anchors.incenseBurner.x) || 540));
+        merged.anchors.incenseBurner.y = Math.max(600, Math.min(1000, Number(merged.anchors.incenseBurner.y) || 845));
+      }
+    }
+    this.sceneConfig = merged;
+    this.store.saveActiveSceneConfig(merged);
+    this.onStateChangedCallback?.();
+    return this.sceneConfig;
   }
 
   public resetTransientState(): void {
@@ -1008,7 +1054,8 @@ export class TempleStateEngine {
       clientPerf: [...this.clientPerfMap.values()],
       lunarInfo: getVietnameseLunarInfo(),
       prayers: [...this.prayers].slice(0, 30),
-      eventTraces: this.eventDebugger.getRecentTraces(50)
+      eventTraces: this.eventDebugger.getRecentTraces(50),
+      sceneConfig: JSON.parse(JSON.stringify(this.sceneConfig))
     };
   }
 

@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
-import { DEFAULT_EVENT_RULES, DEFAULT_SETTINGS } from '../shared/constants.ts';
+import { DEFAULT_EVENT_RULES, DEFAULT_SCENE_CONFIG, DEFAULT_SETTINGS } from '../shared/constants.ts';
 import {
   ConfigBundleExportSchema,
   EventActionRuleSchema,
@@ -15,6 +15,9 @@ import {
 import type {
   AudioTrackItem,
   ITikTokConnector,
+  SceneAssetItem,
+  SceneLayerId,
+  ScenePresetItem,
   ServerToClientWsMessage,
   TempleStateSnapshot
 } from '../shared/types.ts';
@@ -45,6 +48,8 @@ const MIME_TYPES: Record<string, string> = {
   '.m4a': 'audio/mp4',
   '.aac': 'audio/aac',
   '.flac': 'audio/flac',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
@@ -135,6 +140,8 @@ export async function createStudioServer(options?: {
   const ttsCacheDir = path.join(dataDir, 'tts-cache');
   const audioUploadsDir = path.join(dataDir, 'audio-uploads');
   fs.mkdirSync(audioUploadsDir, { recursive: true });
+  const sceneAssetsDir = path.join(dataDir, 'scene-assets');
+  fs.mkdirSync(sceneAssetsDir, { recursive: true });
   const clientDistDir = path.join(PROJECT_ROOT, 'dist', 'client');
   const publicDir = path.join(PROJECT_ROOT, 'public');
 
@@ -473,6 +480,70 @@ export async function createStudioServer(options?: {
       return;
     }
 
+    if (pathname === '/api/admin/scene/upload' && req.method === 'POST') {
+      const headerToken = String(req.headers['x-admin-token'] || '');
+      if (headerToken !== adminToken) {
+        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized: thiếu hoặc sai X-Admin-Token' }));
+        return;
+      }
+
+      try {
+        const rawBuffer = await readBufferBody(req, 50 * 1024 * 1024);
+        const fileNameHeader = req.headers['x-file-name']
+          ? decodeURIComponent(String(req.headers['x-file-name']))
+          : '';
+        const nameHeader = req.headers['x-asset-name']
+          ? decodeURIComponent(String(req.headers['x-asset-name']))
+          : '';
+        const layerHeader = (
+          req.headers['x-layer-target'] ? String(req.headers['x-layer-target']) : 'background'
+        ) as SceneLayerId;
+        const contentType = String(req.headers['content-type'] || 'image/png');
+
+        const originalName = fileNameHeader || 'scene_asset.png';
+        const ext = path.extname(originalName).toLowerCase() || '.png';
+        const safeImageExts = ['.png', '.jpg', '.jpeg', '.webp', '.svg'];
+        const safeVideoExts = ['.mp4', '.webm'];
+        const isImage = safeImageExts.includes(ext);
+        const isVideo = safeVideoExts.includes(ext);
+        if (!isImage && !isVideo) {
+          throw new Error(
+            `Định dạng tệp ${ext} không được hỗ trợ. Vui lòng tải PNG, JPG, WebP, SVG, MP4 hoặc WebM.`
+          );
+        }
+
+        const fileId = `asset_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        const diskFileName = `${fileId}${ext}`;
+        const diskFilePath = path.join(sceneAssetsDir, diskFileName);
+
+        fs.writeFileSync(diskFilePath, rawBuffer);
+
+        const assetItem: SceneAssetItem = {
+          id: fileId,
+          name: nameHeader || originalName.replace(ext, ''),
+          filename: diskFileName,
+          filepath: diskFilePath,
+          url: `/scene-assets/${encodeURIComponent(diskFileName)}`,
+          targetLayer: layerHeader,
+          layerTarget: layerHeader,
+          mediaType: isVideo ? 'video' : 'image',
+          fileSizeBytes: rawBuffer.length,
+          mimeType: contentType,
+          createdAt: Date.now()
+        };
+
+        store.saveSceneAsset(assetItem);
+
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, asset: assetItem, assets: store.listSceneAssets() }));
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: err?.message || 'Lỗi tải lên tư liệu cảnh' }));
+      }
+      return;
+    }
+
     // 3. Protected Admin Endpoints (JSON)
     if (pathname.startsWith('/api/admin/')) {
       if (req.method !== 'POST') {
@@ -560,6 +631,22 @@ export async function createStudioServer(options?: {
         return;
       }
       serveAudioStream(req, res, resolved);
+      return;
+    }
+
+    if (pathname.startsWith('/scene-assets/')) {
+      const rel = decodeURIComponent(pathname.slice('/scene-assets/'.length));
+      const allowedExts = ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.mp4', '.webm'];
+      if (!allowedExts.some((ext) => rel.toLowerCase().endsWith(ext))) {
+        res.writeHead(403).end('Forbidden file type');
+        return;
+      }
+      const resolved = safeResolveFileWithinRoot(sceneAssetsDir, rel);
+      if (!resolved) {
+        res.writeHead(404).end('Not found');
+        return;
+      }
+      serveStaticFile(req, res, resolved);
       return;
     }
 
@@ -986,6 +1073,64 @@ async function handleAdminAction(
         traceId: traces[0]?.traceId,
         snapshot: ctx.getFullSnapshot()
       };
+    }
+
+    case '/api/admin/scene/active': {
+      return { sceneConfig: ctx.engine.getSceneConfig() };
+    }
+
+    case '/api/admin/scene/active/update': {
+      const updated = ctx.engine.updateSceneConfig(body.sceneConfig || {});
+      ctx.broadcastWs({ type: 'sceneConfigUpdate', sceneConfig: updated });
+      return { sceneConfig: updated, snapshot: ctx.getFullSnapshot() };
+    }
+
+    case '/api/admin/scene/assets': {
+      const layerTarget = body.layerTarget ? String(body.layerTarget) : undefined;
+      return { assets: ctx.store.listSceneAssets(layerTarget as any) };
+    }
+
+    case '/api/admin/scene/assets/delete': {
+      const id = String(body.id || '');
+      const ok = ctx.store.deleteSceneAsset(id);
+      return { deleted: ok, assets: ctx.store.listSceneAssets() };
+    }
+
+    case '/api/admin/scene/presets': {
+      return { presets: ctx.store.loadScenePresets() };
+    }
+
+    case '/api/admin/scene/presets/save': {
+      const preset = body.preset;
+      if (!preset || !preset.id || !preset.name || !preset.config) {
+        throw new Error('Preset không hợp lệ: thiếu id, tên hoặc cấu hình config');
+      }
+      ctx.store.saveScenePreset(preset);
+      return { presets: ctx.store.loadScenePresets() };
+    }
+
+    case '/api/admin/scene/presets/apply': {
+      const id = String(body.id || '');
+      const presets = ctx.store.loadScenePresets();
+      const found = presets.find((p) => p.id === id);
+      if (!found) {
+        throw new Error(`Không tìm thấy preset có ID ${id}`);
+      }
+      const updated = ctx.engine.updateSceneConfig(found.config);
+      ctx.broadcastWs({ type: 'sceneConfigUpdate', sceneConfig: updated });
+      return { appliedPresetId: id, sceneConfig: updated, snapshot: ctx.getFullSnapshot() };
+    }
+
+    case '/api/admin/scene/presets/delete': {
+      const id = String(body.id || '');
+      const ok = ctx.store.deleteScenePreset(id);
+      return { deleted: ok, presets: ctx.store.loadScenePresets() };
+    }
+
+    case '/api/admin/scene/reset': {
+      const updated = ctx.engine.updateSceneConfig(DEFAULT_SCENE_CONFIG);
+      ctx.broadcastWs({ type: 'sceneConfigUpdate', sceneConfig: updated });
+      return { sceneConfig: updated, snapshot: ctx.getFullSnapshot() };
     }
 
     default:

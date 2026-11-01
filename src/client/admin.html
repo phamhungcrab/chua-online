@@ -531,6 +531,32 @@
       align-items: center;
       gap: 8px;
     }
+    .active-anchor-chip {
+      background: var(--crimson) !important;
+      border-color: var(--gold-bright) !important;
+      color: #fff !important;
+      font-weight: 700;
+      box-shadow: 0 0 8px rgba(229, 184, 91, 0.4);
+    }
+    .scene-asset-card {
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .scene-asset-card:hover {
+      border-color: var(--gold-bright);
+    }
+    .scene-asset-thumb {
+      width: 100%;
+      height: 110px;
+      object-fit: cover;
+      border-radius: 4px;
+      background: #111;
+    }
   </style>
 </head>
 <body>
@@ -741,6 +767,234 @@
         </div>
         <div class="btn-row">
           <button type="button" class="gold" id="btnSaveSceneSettings">💾 Lưu Cấu Hình Cảnh</button>
+        </div>
+      </section>
+
+      <!-- 3b. Professional Visual Scene Studio (9:16 Canvas & Layer Stack Manager) -->
+      <section class="panel-card full-span" id="sceneStudioSection">
+        <h2>
+          <span>3b. Xưởng Thiết Kế Cảnh Chùa &amp; Quản Lý Layer (Visual Scene Studio 9:16)</span>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select id="selScenePreset" style="max-width:240px; font-size:12px; padding:4px 8px;">
+              <!-- Populated dynamically -->
+            </select>
+            <button type="button" class="gold" id="btnApplyScenePreset">✨ Nạp Preset</button>
+            <button type="button" id="btnSaveCurrentPreset">💾 Lưu Thành Preset</button>
+            <button type="button" id="btnUndoScene" title="Hoàn tác thay đổi">↩ Hoàn tác</button>
+            <button type="button" id="btnRedoScene" title="Làm lại thay đổi">↪ Làm lại</button>
+            <button type="button" id="btnResetSceneDefault">🔄 Về Mặc Định</button>
+            <button type="button" class="primary" id="btnApplySceneToLive">⚡ Áp Dụng Lên LIVE Ngay</button>
+          </div>
+        </h2>
+
+        <!-- Subtabs for Scene Studio -->
+        <nav class="audio-nav-tabs" id="sceneNavTabs">
+          <button type="button" class="audio-tab-btn active" data-scenetab="tabVisualEditor">🎨 Visual Editor (Kéo Thả 9:16)</button>
+          <button type="button" class="audio-tab-btn" data-scenetab="tabLayerStack">📚 Quản Lý 8 Layer</button>
+          <button type="button" class="audio-tab-btn" data-scenetab="tabAnchorsConfig">🎯 Tọa Độ Pháp Khí &amp; Giới Hạn An Toàn</button>
+          <button type="button" class="audio-tab-btn" data-scenetab="tabSceneAssets">🖼️ Kho Tư Liệu Ảnh &amp; Video</button>
+        </nav>
+
+        <!-- Tab 1: Visual Editor with 9:16 Interactive Canvas -->
+        <div class="audio-tab-content active" id="tabVisualEditor" style="padding:14px 0;">
+          <div style="display:grid; grid-template-columns: 360px 1fr; gap: 20px; align-items:start;">
+            <!-- 9:16 Interactive Canvas -->
+            <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+              <div style="position:relative; width:324px; height:576px; background:#000; border:2px solid var(--gold); border-radius:12px; overflow:hidden; box-shadow:0 8px 30px rgba(0,0,0,0.8);">
+                <canvas id="sceneEditorCanvas" width="1080" height="1920" style="width:100%; height:100%; display:block; cursor:crosshair;"></canvas>
+                <div id="editorAnchorTooltip" style="position:absolute; display:none; background:rgba(0,0,0,0.85); color:#fff; font-size:11px; padding:3px 6px; border-radius:4px; pointer-events:none; border:1px solid var(--gold); z-index:10;"></div>
+              </div>
+              <div style="font-size:11px; color:var(--muted); text-align:center;">
+                💡 Kéo các điểm mốc (Phật, Lư Hương, Mõ, Chuông, Lạy Tam Bái) trực tiếp trên khung 9:16.<br />
+                Vùng sọc đỏ là giới hạn bảo vệ: Nhân vật không bao giờ giẫm lên bàn thờ.
+              </div>
+            </div>
+
+            <!-- Selected Anchor / Quick Tweak Box -->
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                <h3 style="margin:0 0 10px 0; color:var(--gold-bright); font-size:15px; display:flex; justify-content:space-between;">
+                  <span id="selectedAnchorName">Tượng Phật A Di Đà (Đang chọn)</span>
+                  <span id="selectedAnchorCoords" style="color:var(--muted); font-size:13px; font-family:monospace;">(540, 520)</span>
+                </h3>
+                <div class="form-row">
+                  <div class="field">
+                    <label>Tọa độ X (Ngang: 0 - 1080)</label>
+                    <input type="range" id="rngAnchorX" min="0" max="1080" value="540" />
+                    <input type="number" id="numAnchorX" min="0" max="1080" value="540" style="margin-top:4px;" />
+                  </div>
+                  <div class="field">
+                    <label>Tọa độ Y (Dọc: 0 - 1920)</label>
+                    <input type="range" id="rngAnchorY" min="0" max="1920" value="520" />
+                    <input type="number" id="numAnchorY" min="0" max="1920" value="520" style="margin-top:4px;" />
+                  </div>
+                </div>
+                <div class="form-row" style="margin-top:10px;">
+                  <div class="field">
+                    <label>Tỷ Lệ Kích Thước (Scale: 0.5 - 2.0)</label>
+                    <input type="range" id="rngAnchorScale" min="0.5" max="2.0" step="0.05" value="1.0" />
+                    <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:2px;">
+                      <span>50%</span><span id="lblAnchorScale">100%</span><span>200%</span>
+                    </div>
+                  </div>
+                  <div class="field" style="display:flex; align-items:center; gap:8px; margin-top:20px;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                      <input type="checkbox" id="chkAnchorVisible" checked /> Hiển thị pháp khí này
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Quick Anchor Selector Chips -->
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <label style="font-size:13px; color:var(--muted); font-weight:600;">Chọn nhanh thành phần để căn chỉnh:</label>
+                <div style="display:flex; flex-wrap:wrap; gap:8px;" id="anchorChipsContainer">
+                  <button type="button" class="active-anchor-chip gold" data-anchor="buddhaStatue">🪷 Tượng Phật &amp; Hào Quang</button>
+                  <button type="button" data-anchor="incenseBurner">🔥 Lư Hương Đồng &amp; Khói Trầm</button>
+                  <button type="button" data-anchor="woodenFish">🪵 Mõ Gỗ Tụng Kinh</button>
+                  <button type="button" data-anchor="templeBell">🔔 Đại Hồng Chung</button>
+                  <button type="button" data-anchor="ceremony">🙏 Điểm Lạy Tam Bái (An Toàn)</button>
+                  <button type="button" data-anchor="congregation">👥 Vùng Bồ Đoàn Đạo Tràng</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: 8-Layer Stack Manager -->
+        <div class="audio-tab-content" id="tabLayerStack" style="padding:14px 0;">
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+              <thead>
+                <tr style="border-bottom:1.5px solid var(--border); color:var(--gold-bright); text-align:left;">
+                  <th style="padding:8px 10px;">Thứ tự</th>
+                  <th style="padding:8px 10px;">Tên Lớp (Layer)</th>
+                  <th style="padding:8px 10px;">Tư Liệu Gán (Asset)</th>
+                  <th style="padding:8px 10px;">Chế Độ Scale</th>
+                  <th style="padding:8px 10px;">Độ Mờ (Opacity)</th>
+                  <th style="padding:8px 10px;">Đồ Họa Gốc</th>
+                  <th style="padding:8px 10px; text-align:center;">Hiển Thị</th>
+                  <th style="padding:8px 10px; text-align:center;">Khóa</th>
+                </tr>
+              </thead>
+              <tbody id="layerTableBody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+          <div style="margin-top:12px; display:flex; justify-content:flex-end; gap:8px;">
+            <button type="button" class="gold" id="btnSaveLayerConfig">💾 Lưu Thứ Tự &amp; Cấu Hình Layer</button>
+          </div>
+        </div>
+
+        <!-- Tab 3: Detailed Coordinates & Guardrails -->
+        <div class="audio-tab-content" id="tabAnchorsConfig" style="padding:14px 0;">
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+            <!-- Ceremony Walk & Kneel Guardrails -->
+            <div style="background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:10px; padding:14px;">
+              <h4 style="margin:0 0 8px 0; color:var(--gold-bright);">Hành Lễ Tam Bái (Central Ceremony)</h4>
+              <p style="font-size:12px; color:var(--muted); margin:0 0 10px 0;">
+                Điều chỉnh vị trí Phật tử bước vào, quỳ lạy 3 lạy và rời đi. Hệ thống tự động khóa an toàn: vị trí lạy không được vượt qua Y=960 để không giẫm lên bàn thờ.
+              </p>
+              <div class="form-row">
+                <div class="field">
+                  <label>Điểm Vào (Spawn X, Y)</label>
+                  <div style="display:flex; gap:6px;">
+                    <input type="number" id="inpCeremonySpawnX" value="540" />
+                    <input type="number" id="inpCeremonySpawnY" value="1760" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Điểm Quỳ Lạy (Kneel X, Y - Min Y=960)</label>
+                  <div style="display:flex; gap:6px;">
+                    <input type="number" id="inpCeremonyKneelX" value="540" min="300" max="780" />
+                    <input type="number" id="inpCeremonyKneelY" value="1060" min="960" max="1400" />
+                  </div>
+                </div>
+              </div>
+              <div class="form-row" style="margin-top:8px;">
+                <div class="field">
+                  <label>Điểm Thoát (Exit X, Y)</label>
+                  <div style="display:flex; gap:6px;">
+                    <input type="number" id="inpCeremonyExitX" value="540" />
+                    <input type="number" id="inpCeremonyExitY" value="1840" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Congregation Perspective Trapezoid -->
+            <div style="background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:10px; padding:14px;">
+              <h4 style="margin:0 0 8px 0; color:var(--gold-bright);">Vùng Bồ Đoàn Đạo Tràng (Congregation)</h4>
+              <p style="font-size:12px; color:var(--muted); margin:0 0 10px 0;">
+                Căn chỉnh hình thang phối cảnh của hàng bồ đoàn hai bên thảm đỏ. Hàng trên cùng luôn khóa $\ge 1100$.
+              </p>
+              <div class="form-row">
+                <div class="field">
+                  <label>Hàng Trên (Y Top $\ge$ 1100, Nửa rộng)</label>
+                  <div style="display:flex; gap:6px;">
+                    <input type="number" id="inpCongYTop" value="1248" min="1100" />
+                    <input type="number" id="inpCongHalfTop" value="365" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Hàng Dưới (Y Bottom, Nửa rộng)</label>
+                  <div style="display:flex; gap:6px;">
+                    <input type="number" id="inpCongYBottom" value="1705" />
+                    <input type="number" id="inpCongHalfBottom" value="475" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:12px; display:flex; justify-content:flex-end;">
+            <button type="button" class="gold" id="btnSaveAnchorsManual">💾 Lưu Tọa Độ Pháp Khí</button>
+          </div>
+        </div>
+
+        <!-- Tab 4: Scene Assets Repository & Uploader -->
+        <div class="audio-tab-content" id="tabSceneAssets" style="padding:14px 0;">
+          <div style="display:grid; grid-template-columns: 340px 1fr; gap:16px;">
+            <!-- Upload Box -->
+            <div style="background:rgba(0,0,0,0.3); border:1.5px dashed var(--gold); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:10px;">
+              <h4 style="margin:0; color:var(--gold-bright);">Tải Lên Tư Liệu Mới</h4>
+              <div style="font-size:12px; color:var(--muted);">
+                Hỗ trợ PNG, JPG, WebP (trong suốt), Video MP4/WebM (tối đa 50MB).
+              </div>
+              <div class="field">
+                <label>Tên tư liệu hiển thị</label>
+                <input type="text" id="inpSceneAssetName" placeholder="Ví dụ: Phông Chánh Điện Cổ Tự" />
+              </div>
+              <div class="field">
+                <label>Gán mặc định cho Layer</label>
+                <select id="selSceneAssetLayerTarget">
+                  <option value="background">Background (Phông Nền)</option>
+                  <option value="architecture">Architecture (Kiến Trúc/Cột Kèo)</option>
+                  <option value="altar">Altar (Ban Thờ &amp; Tượng Phật)</option>
+                  <option value="floor">Floor (Sàn Lễ &amp; Bồ Đoàn)</option>
+                  <option value="foreground">Foreground (Tiền Cảnh/Hồ Sen)</option>
+                </select>
+              </div>
+              <div class="field">
+                <input type="file" id="inpSceneAssetFile" accept="image/png,image/jpeg,image/webp,image/svg+xml,video/mp4,video/webm" />
+              </div>
+              <button type="button" class="gold" id="btnUploadSceneAsset">📤 Tải Lên Tư Liệu</button>
+              <div id="sceneAssetUploadStatus" style="font-size:12px; color:var(--muted);"></div>
+            </div>
+
+            <!-- Assets Gallery Cards -->
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h4 style="margin:0; color:var(--gold-bright);">Tư Liệu Đã Tải Lên (<span id="sceneAssetCount">0</span>)</h4>
+                <div style="display:flex; gap:6px;">
+                  <button type="button" id="btnRefreshSceneAssets" style="font-size:11px; padding:4px 8px;">🔄 Làm Mới</button>
+                </div>
+              </div>
+              <div id="sceneAssetGrid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:12px; max-height:480px; overflow-y:auto; padding-right:6px;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

@@ -137,7 +137,8 @@ function applyFullSnapshot(snap: TempleStateSnapshot): void {
     snap.seatedViewers,
     snap.lanterns,
     effectiveSettings,
-    snap.totals.incenseBurned
+    snap.totals.incenseBurned,
+    snap.sceneConfig
   );
   audio.applySettings(effectiveSettings);
 }
@@ -385,6 +386,9 @@ function connectWebSocket(): void {
           break;
         case 'tts':
           if (!isMutedMode) audio.enqueueTts(msg.tts);
+          break;
+        case 'sceneConfigUpdate':
+          scene.applySceneConfig(msg.sceneConfig);
           break;
       }
     } catch {

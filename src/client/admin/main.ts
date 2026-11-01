@@ -2,9 +2,14 @@ import '@fontsource/be-vietnam-pro/400.css';
 import '@fontsource/be-vietnam-pro/600.css';
 import '@fontsource/be-vietnam-pro/700.css';
 import '@fontsource/noto-serif/700.css';
+import { DEFAULT_SCENE_CONFIG } from '../../shared/constants.ts';
 import type {
   EventActionRule,
   EventTraceItem,
+  SceneAssetItem,
+  SceneConfig,
+  SceneLayerConfig,
+  ScenePresetItem,
   ServerToClientWsMessage,
   TempleStateSnapshot
 } from '../../shared/types.ts';
@@ -98,6 +103,13 @@ let formInitialized = false;
 
 function renderSnapshot(snap: TempleStateSnapshot): void {
   latestSnapshot = snap;
+
+  if (snap.sceneConfig && !sceneEditorInitialized) {
+    activeSceneConfig = JSON.parse(JSON.stringify(snap.sceneConfig));
+    sceneEditorInitialized = true;
+    updateSceneEditorUI();
+    renderSceneEditorCanvas();
+  }
 
   badgeTikTokEl.textContent = `TikTok: ${snap.connector.state.toUpperCase()}${snap.connector.uniqueId ? ' (@' + snap.connector.uniqueId + ')' : ''}`;
   badgeSimEl.textContent = `Simulator: ${snap.simulator.running ? snap.simulator.scenario.toUpperCase() : 'TẮT'}`;
@@ -1168,6 +1180,10 @@ function connectAdminWs(): void {
         if (elAudioLeader) {
           elAudioLeader.textContent = msg.leaderClientId ? `Leader: ${msg.leaderClientId}` : '(Chờ Overlay kết nối)';
         }
+      } else if (msg.type === 'sceneConfigUpdate') {
+        activeSceneConfig = JSON.parse(JSON.stringify(msg.sceneConfig));
+        updateSceneEditorUI();
+        renderSceneEditorCanvas();
       }
     } catch {
       // ignore
@@ -1397,6 +1413,986 @@ if (btnConfirmResetAction && inpResetConfirmation && modalResetConfirmation) {
   });
 }
 
+// ======================================================================
+// 3B. PROFESSIONAL SCENE STUDIO & 9:16 VISUAL EDITOR
+// ======================================================================
+let activeSceneConfig: SceneConfig = JSON.parse(JSON.stringify(DEFAULT_SCENE_CONFIG));
+let sceneUndoStack: SceneConfig[] = [];
+let sceneRedoStack: SceneConfig[] = [];
+let selectedAnchorKey:
+  | 'buddhaStatue'
+  | 'incenseBurner'
+  | 'woodenFish'
+  | 'templeBell'
+  | 'ceremony'
+  | 'congregation' = 'buddhaStatue';
+let sceneAssetsList: SceneAssetItem[] = [];
+let scenePresetsList: ScenePresetItem[] = [];
+let isDraggingAnchor = false;
+let sceneEditorInitialized = false;
+
+function pushSceneUndo(): void {
+  sceneUndoStack.push(JSON.parse(JSON.stringify(activeSceneConfig)));
+  if (sceneUndoStack.length > 40) sceneUndoStack.shift();
+  sceneRedoStack = [];
+}
+
+const editorCanvas = document.getElementById('sceneEditorCanvas') as HTMLCanvasElement | null;
+const editorCtx = editorCanvas?.getContext('2d');
+const editorTooltip = document.getElementById('editorAnchorTooltip');
+
+const rngAnchorX = document.getElementById('rngAnchorX') as HTMLInputElement | null;
+const numAnchorX = document.getElementById('numAnchorX') as HTMLInputElement | null;
+const rngAnchorY = document.getElementById('rngAnchorY') as HTMLInputElement | null;
+const numAnchorY = document.getElementById('numAnchorY') as HTMLInputElement | null;
+const rngAnchorScale = document.getElementById('rngAnchorScale') as HTMLInputElement | null;
+const lblAnchorScale = document.getElementById('lblAnchorScale');
+const chkAnchorVisible = document.getElementById('chkAnchorVisible') as HTMLInputElement | null;
+const selectedAnchorName = document.getElementById('selectedAnchorName');
+const selectedAnchorCoords = document.getElementById('selectedAnchorCoords');
+
+function selectAnchor(
+  key: 'buddhaStatue' | 'incenseBurner' | 'woodenFish' | 'templeBell' | 'ceremony' | 'congregation'
+): void {
+  selectedAnchorKey = key;
+  document.querySelectorAll('#anchorChipsContainer [data-anchor]').forEach((btn) => {
+    const isThis = btn.getAttribute('data-anchor') === key;
+    btn.classList.toggle('active-anchor-chip', isThis);
+    btn.classList.toggle('gold', isThis);
+  });
+
+  const anchors = activeSceneConfig.anchors;
+  let nameStr = '';
+  let curX = 540;
+  let curY = 520;
+  let curScale = 1.0;
+  let isVis = true;
+
+  switch (key) {
+    case 'buddhaStatue':
+      nameStr = '🪷 Tượng Phật A Di Đà & Hào Quang';
+      curX = anchors.buddhaStatue?.x ?? 540;
+      curY = anchors.buddhaStatue?.y ?? 520;
+      curScale = anchors.buddhaStatue?.scale ?? 1.0;
+      isVis = anchors.buddhaStatue?.visible !== false;
+      break;
+    case 'incenseBurner':
+      nameStr = '🔥 Lư Hương Đồng & Khói Trầm';
+      curX = anchors.incenseBurner?.x ?? 540;
+      curY = anchors.incenseBurner?.y ?? 845;
+      curScale = anchors.incenseBurner?.scale ?? 1.0;
+      isVis = anchors.incenseBurner?.visible !== false;
+      break;
+    case 'woodenFish':
+      nameStr = '🪵 Mõ Gỗ Tụng Kinh';
+      curX = anchors.woodenFish?.x ?? 210;
+      curY = anchors.woodenFish?.y ?? 855;
+      curScale = anchors.woodenFish?.scale ?? 1.0;
+      isVis = anchors.woodenFish?.visible !== false;
+      break;
+    case 'templeBell':
+      nameStr = '🔔 Đại Hồng Chung';
+      curX = anchors.templeBell?.x ?? 870;
+      curY = anchors.templeBell?.y ?? 795;
+      curScale = anchors.templeBell?.scale ?? 1.0;
+      isVis = anchors.templeBell?.visible !== false;
+      break;
+    case 'ceremony':
+      nameStr = '🙏 Điểm Lạy Tam Bái (An Toàn Altar)';
+      curX = anchors.ceremony?.kneelX ?? 540;
+      curY = anchors.ceremony?.kneelY ?? 1060;
+      curScale = 1.0;
+      isVis = anchors.ceremony?.visible !== false;
+      break;
+    case 'congregation':
+      nameStr = '👥 Vùng Bồ Đoàn Đạo Tràng';
+      curX = 540;
+      curY = anchors.congregation?.yTop ?? 1248;
+      curScale = 1.0;
+      isVis = anchors.congregation?.visible !== false;
+      break;
+  }
+
+  if (selectedAnchorName) selectedAnchorName.textContent = nameStr;
+  if (selectedAnchorCoords) selectedAnchorCoords.textContent = `(${Math.round(curX)}, ${Math.round(curY)})`;
+
+  if (rngAnchorX) rngAnchorX.value = String(Math.round(curX));
+  if (numAnchorX) numAnchorX.value = String(Math.round(curX));
+  if (rngAnchorY) rngAnchorY.value = String(Math.round(curY));
+  if (numAnchorY) numAnchorY.value = String(Math.round(curY));
+  if (rngAnchorScale) rngAnchorScale.value = String(curScale);
+  if (lblAnchorScale) lblAnchorScale.textContent = `${Math.round(curScale * 100)}%`;
+  if (chkAnchorVisible) chkAnchorVisible.checked = isVis;
+
+  renderSceneEditorCanvas();
+}
+
+function updateSelectedAnchorCoords(x: number, y: number, scale?: number, visible?: boolean): void {
+  const anchors = activeSceneConfig.anchors;
+  switch (selectedAnchorKey) {
+    case 'buddhaStatue':
+      anchors.buddhaStatue.x = Math.max(200, Math.min(880, Math.round(x)));
+      anchors.buddhaStatue.y = Math.max(200, Math.min(700, Math.round(y)));
+      if (scale !== undefined) anchors.buddhaStatue.scale = scale;
+      if (visible !== undefined) anchors.buddhaStatue.visible = visible;
+      break;
+    case 'incenseBurner':
+      anchors.incenseBurner.x = Math.max(200, Math.min(880, Math.round(x)));
+      anchors.incenseBurner.y = Math.max(600, Math.min(1000, Math.round(y)));
+      if (scale !== undefined) anchors.incenseBurner.scale = scale;
+      if (visible !== undefined) anchors.incenseBurner.visible = visible;
+      break;
+    case 'woodenFish':
+      anchors.woodenFish.x = Math.max(50, Math.min(450, Math.round(x)));
+      anchors.woodenFish.y = Math.max(650, Math.min(1200, Math.round(y)));
+      if (scale !== undefined) anchors.woodenFish.scale = scale;
+      if (visible !== undefined) anchors.woodenFish.visible = visible;
+      break;
+    case 'templeBell':
+      anchors.templeBell.x = Math.max(630, Math.min(1030, Math.round(x)));
+      anchors.templeBell.y = Math.max(600, Math.min(1200, Math.round(y)));
+      if (scale !== undefined) anchors.templeBell.scale = scale;
+      if (visible !== undefined) anchors.templeBell.visible = visible;
+      break;
+    case 'ceremony':
+      anchors.ceremony.kneelX = Math.max(300, Math.min(780, Math.round(x)));
+      anchors.ceremony.kneelY = Math.max(960, Math.min(1400, Math.round(y)));
+      if (visible !== undefined) anchors.ceremony.visible = visible;
+      break;
+    case 'congregation':
+      anchors.congregation.yTop = Math.max(1100, Math.min(1600, Math.round(y)));
+      if (visible !== undefined) anchors.congregation.visible = visible;
+      break;
+  }
+
+  if (selectedAnchorCoords) {
+    selectedAnchorCoords.textContent = `(${Math.round(x)}, ${Math.round(y)})`;
+  }
+  renderSceneEditorCanvas();
+}
+
+function renderSceneEditorCanvas(): void {
+  if (!editorCanvas || !editorCtx) return;
+  const ctx = editorCtx;
+  const anchors = activeSceneConfig.anchors;
+
+  ctx.clearRect(0, 0, 1080, 1920);
+
+  // 1. Dark Hall Gradient Background
+  const grad = ctx.createLinearGradient(0, 0, 0, 1920);
+  grad.addColorStop(0, '#1a0804');
+  grad.addColorStop(0.4, '#120503');
+  grad.addColorStop(1, '#080201');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 1080, 1920);
+
+  // 2. Subtle Coordinate Grid (every 120px)
+  ctx.strokeStyle = 'rgba(229, 184, 91, 0.08)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= 1080; x += 120) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, 1920);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= 1920; y += 120) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(1080, y);
+    ctx.stroke();
+  }
+
+  // 3. Central Red Carpet Aisle Guide
+  ctx.fillStyle = 'rgba(140, 32, 20, 0.22)';
+  ctx.beginPath();
+  ctx.moveTo(540 - 130, 960);
+  ctx.lineTo(540 + 130, 960);
+  ctx.lineTo(540 + 190, 1920);
+  ctx.lineTo(540 - 190, 1920);
+  ctx.closePath();
+  ctx.fill();
+
+  // 4. Altar Forbidden Guardrail Zone (Y: 250..940)
+  ctx.fillStyle = 'rgba(140, 32, 20, 0.18)';
+  ctx.fillRect(140, 250, 800, 690);
+  ctx.strokeStyle = 'rgba(255, 85, 85, 0.6)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([8, 8]);
+  ctx.strokeRect(140, 250, 800, 690);
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = '#ff7777';
+  ctx.font = 'bold 22px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('⛔ VÙNG BAN THỜ BẢO VỆ (GIỚI HẠN AN TOÀN · MIN Y: 960)', 540, 285);
+
+  // 5. Congregation Seating Trapezoid
+  const cong = anchors.congregation;
+  if (cong && cong.visible !== false) {
+    const yT = cong.yTop;
+    const yB = cong.yBottom;
+    const hT = cong.halfTop;
+    const hB = cong.halfBottom;
+
+    ctx.strokeStyle = 'rgba(77, 182, 172, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(540 - hT, yT);
+    ctx.lineTo(540 + hT, yT);
+    ctx.lineTo(540 + hB, yB);
+    ctx.lineTo(540 - hB, yB);
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(77, 182, 172, 0.35)';
+    for (let r = 0; r < 5; r++) {
+      const t = r / 4;
+      const cy = yT + (yB - yT) * t;
+      const ch = hT + (hB - hT) * t;
+      for (const side of [-1, 1]) {
+        for (let c = 0; c < 3; c++) {
+          const cx = 540 + side * (ch * (0.35 + c * 0.28));
+          ctx.beginPath();
+          ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
+  // 6. Central Ceremony Walk & Kneel Path
+  const cer = anchors.ceremony;
+  if (cer && cer.visible !== false) {
+    ctx.strokeStyle = 'rgba(255, 228, 148, 0.85)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath();
+    ctx.moveTo(cer.spawnX, cer.spawnY);
+    ctx.lineTo(cer.kneelX, cer.kneelY);
+    ctx.lineTo(cer.exitX, cer.exitY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Spawn Point
+    ctx.fillStyle = '#ffe494';
+    ctx.beginPath();
+    ctx.arc(cer.spawnX, cer.spawnY, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText('VÀO', cer.spawnX, cer.spawnY + 5);
+
+    // Exit Point
+    ctx.fillStyle = '#e57373';
+    ctx.beginPath();
+    ctx.arc(cer.exitX, cer.exitY, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText('RA', cer.exitX, cer.exitY + 5);
+  }
+
+  // 7. Anchors Rendering Helper
+  function drawAnchorBadge(
+    key: typeof selectedAnchorKey,
+    x: number,
+    y: number,
+    icon: string,
+    label: string,
+    radius = 48
+  ): void {
+    const isSelected = selectedAnchorKey === key;
+    ctx.save();
+    ctx.translate(x, y);
+
+    if (isSelected) {
+      ctx.strokeStyle = '#ffe494';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 12, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255, 228, 148, 0.2)';
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 10, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = isSelected ? 'rgba(140, 32, 20, 0.95)' : 'rgba(32, 13, 7, 0.85)';
+    ctx.strokeStyle = isSelected ? '#ffd700' : 'rgba(229, 184, 91, 0.6)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = '32px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(icon, 0, -4);
+
+    ctx.font = 'bold 18px system-ui, sans-serif';
+    ctx.fillStyle = isSelected ? '#ffd700' : '#f8ecd6';
+    ctx.fillText(label, 0, radius + 24);
+
+    ctx.font = '14px monospace';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.fillText(`(${Math.round(x)}, ${Math.round(y)})`, 0, radius + 44);
+
+    ctx.restore();
+  }
+
+  if (anchors.buddhaStatue && anchors.buddhaStatue.visible !== false) {
+    drawAnchorBadge(
+      'buddhaStatue',
+      anchors.buddhaStatue.x,
+      anchors.buddhaStatue.y,
+      '🪷',
+      'Phật A Di Đà',
+      56
+    );
+  }
+
+  if (anchors.incenseBurner && anchors.incenseBurner.visible !== false) {
+    drawAnchorBadge(
+      'incenseBurner',
+      anchors.incenseBurner.x,
+      anchors.incenseBurner.y,
+      '🔥',
+      'Lư Hương Đồng',
+      46
+    );
+  }
+
+  if (anchors.woodenFish && anchors.woodenFish.visible !== false) {
+    drawAnchorBadge(
+      'woodenFish',
+      anchors.woodenFish.x,
+      anchors.woodenFish.y,
+      '🪵',
+      'Mõ Gỗ',
+      42
+    );
+  }
+
+  if (anchors.templeBell && anchors.templeBell.visible !== false) {
+    drawAnchorBadge(
+      'templeBell',
+      anchors.templeBell.x,
+      anchors.templeBell.y,
+      '🔔',
+      'Đại Hồng Chung',
+      42
+    );
+  }
+
+  if (anchors.ceremony && anchors.ceremony.visible !== false) {
+    drawAnchorBadge(
+      'ceremony',
+      anchors.ceremony.kneelX,
+      anchors.ceremony.kneelY,
+      '🙏',
+      'Lạy Tam Bái (Min Y: 960)',
+      50
+    );
+  }
+
+  // Header Banner
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+  ctx.fillRect(0, 0, 1080, 72);
+  ctx.fillStyle = '#ffe494';
+  ctx.font = 'bold 26px "Noto Serif", Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('CHÁNH ĐIỆN TỊNH TÂM · KHUNG THIẾT KẾ 9:16', 540, 46);
+}
+
+function updateSceneEditorUI(): void {
+  const cer = activeSceneConfig.anchors.ceremony;
+  if (cer) {
+    const spX = document.getElementById('inpCeremonySpawnX') as HTMLInputElement | null;
+    const spY = document.getElementById('inpCeremonySpawnY') as HTMLInputElement | null;
+    const knX = document.getElementById('inpCeremonyKneelX') as HTMLInputElement | null;
+    const knY = document.getElementById('inpCeremonyKneelY') as HTMLInputElement | null;
+    const exX = document.getElementById('inpCeremonyExitX') as HTMLInputElement | null;
+    const exY = document.getElementById('inpCeremonyExitY') as HTMLInputElement | null;
+    if (spX) spX.value = String(cer.spawnX);
+    if (spY) spY.value = String(cer.spawnY);
+    if (knX) knX.value = String(cer.kneelX);
+    if (knY) knY.value = String(cer.kneelY);
+    if (exX) exX.value = String(cer.exitX);
+    if (exY) exY.value = String(cer.exitY);
+  }
+
+  const cong = activeSceneConfig.anchors.congregation;
+  if (cong) {
+    const yT = document.getElementById('inpCongYTop') as HTMLInputElement | null;
+    const hT = document.getElementById('inpCongHalfTop') as HTMLInputElement | null;
+    const yB = document.getElementById('inpCongYBottom') as HTMLInputElement | null;
+    const hB = document.getElementById('inpCongHalfBottom') as HTMLInputElement | null;
+    if (yT) yT.value = String(cong.yTop);
+    if (hT) hT.value = String(cong.halfTop);
+    if (yB) yB.value = String(cong.yBottom);
+    if (hB) hB.value = String(cong.halfBottom);
+  }
+
+  selectAnchor(selectedAnchorKey);
+  renderLayerStackTable();
+}
+
+function renderLayerStackTable(): void {
+  const tbody = document.getElementById('layerTableBody');
+  if (!tbody) return;
+  tbody.replaceChildren();
+
+  const layerNames: Record<string, string> = {
+    background: '1. Phông Nền Chánh Điện (Background)',
+    architecture: '2. Cột Kèo & Mái Chùa (Architecture)',
+    altar: '3. Ban Thờ, Tượng & Pháp Khí (Altar)',
+    floor: '4. Sàn Lễ Bái & Bồ Đoàn (Floor)',
+    characters: '5. Tăng Đoàn & Phật Tử (Characters)',
+    foreground: '6. Hồ Sen & Hoa Đăng (Foreground)',
+    particles: '7. Khói Trầm & Cánh Hoa (Particles)',
+    hud: '8. Hoành Phi & TikTok SafeZone (HUD)'
+  };
+
+  for (const layer of activeSceneConfig.layers || []) {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid rgba(229,184,91,0.15)';
+
+    const tdOrder = document.createElement('td');
+    tdOrder.textContent = String(layer.order ?? (activeSceneConfig.layers.indexOf(layer) + 1));
+    tdOrder.style.padding = '8px 10px';
+    tdOrder.style.fontFamily = 'monospace';
+
+    const tdName = document.createElement('td');
+    tdName.textContent = layerNames[layer.id] || layer.id;
+    tdName.style.padding = '8px 10px';
+    tdName.style.fontWeight = '600';
+    tdName.style.color = 'var(--text)';
+
+    const tdAsset = document.createElement('td');
+    tdAsset.style.padding = '8px 10px';
+    const selAsset = document.createElement('select');
+    selAsset.style.fontSize = '12px';
+    selAsset.style.padding = '3px 6px';
+    selAsset.style.maxWidth = '180px';
+    selAsset.innerHTML = '<option value="">(Không gán · Mặc định)</option>';
+
+    for (const asset of sceneAssetsList) {
+      const opt = document.createElement('option');
+      opt.value = asset.url;
+      opt.textContent = `${asset.name} (${asset.mediaType})`;
+      if (layer.assetUrl === asset.url) opt.selected = true;
+      selAsset.appendChild(opt);
+    }
+
+    selAsset.onchange = () => {
+      pushSceneUndo();
+      layer.assetUrl = selAsset.value || undefined;
+      renderSceneEditorCanvas();
+    };
+    tdAsset.appendChild(selAsset);
+
+    const tdScale = document.createElement('td');
+    tdScale.style.padding = '8px 10px';
+    const selScale = document.createElement('select');
+    selScale.style.fontSize = '12px';
+    selScale.style.padding = '3px 6px';
+    ['cover', 'contain', 'center', 'custom'].forEach((mode) => {
+      const opt = document.createElement('option');
+      opt.value = mode;
+      opt.textContent = mode.toUpperCase();
+      if (layer.scaleMode === mode) opt.selected = true;
+      selScale.appendChild(opt);
+    });
+    selScale.onchange = () => {
+      pushSceneUndo();
+      layer.scaleMode = selScale.value as any;
+      renderSceneEditorCanvas();
+    };
+    tdScale.appendChild(selScale);
+
+    const tdOpacity = document.createElement('td');
+    tdOpacity.style.padding = '8px 10px';
+    const rngOp = document.createElement('input');
+    rngOp.type = 'range';
+    rngOp.min = '0';
+    rngOp.max = '1';
+    rngOp.step = '0.05';
+    rngOp.value = String(layer.opacity ?? 1.0);
+    rngOp.style.width = '70px';
+    const lblOp = document.createElement('span');
+    lblOp.style.fontSize = '11px';
+    lblOp.style.marginLeft = '4px';
+    lblOp.textContent = `${Math.round((layer.opacity ?? 1.0) * 100)}%`;
+    rngOp.oninput = () => {
+      layer.opacity = Number(rngOp.value);
+      lblOp.textContent = `${Math.round(Number(rngOp.value) * 100)}%`;
+      renderSceneEditorCanvas();
+    };
+    tdOpacity.append(rngOp, lblOp);
+
+    const tdHideProc = document.createElement('td');
+    tdHideProc.style.padding = '8px 10px';
+    const chkHide = document.createElement('input');
+    chkHide.type = 'checkbox';
+    chkHide.checked = Boolean(layer.hideProcedural);
+    chkHide.title = 'Ẩn đồ họa gốc khi có ảnh tùy chỉnh để tránh bị lặp đôi';
+    chkHide.onchange = () => {
+      pushSceneUndo();
+      layer.hideProcedural = chkHide.checked;
+      renderSceneEditorCanvas();
+    };
+    tdHideProc.appendChild(chkHide);
+
+    const tdVis = document.createElement('td');
+    tdVis.style.textAlign = 'center';
+    tdVis.style.padding = '8px 10px';
+    const chkVis = document.createElement('input');
+    chkVis.type = 'checkbox';
+    chkVis.checked = layer.visible !== false;
+    chkVis.onchange = () => {
+      pushSceneUndo();
+      layer.visible = chkVis.checked;
+      renderSceneEditorCanvas();
+    };
+    tdVis.appendChild(chkVis);
+
+    const tdLock = document.createElement('td');
+    tdLock.style.textAlign = 'center';
+    tdLock.style.padding = '8px 10px';
+    const chkLock = document.createElement('input');
+    chkLock.type = 'checkbox';
+    chkLock.checked = Boolean(layer.locked);
+    chkLock.onchange = () => {
+      pushSceneUndo();
+      layer.locked = chkLock.checked;
+    };
+    tdLock.appendChild(chkLock);
+
+    tr.append(tdOrder, tdName, tdAsset, tdScale, tdOpacity, tdHideProc, tdVis, tdLock);
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadSceneAssets(): Promise<void> {
+  try {
+    const res = await callAdminApi('/api/admin/scene/assets');
+    sceneAssetsList = res.assets || [];
+    renderSceneAssetsGallery();
+    renderLayerStackTable();
+  } catch {
+    // ignore
+  }
+}
+
+function renderSceneAssetsGallery(): void {
+  const grid = document.getElementById('sceneAssetGrid');
+  const countEl = document.getElementById('sceneAssetCount');
+  if (countEl) countEl.textContent = String(sceneAssetsList.length);
+  if (!grid) return;
+
+  if (sceneAssetsList.length === 0) {
+    grid.innerHTML =
+      '<div style="grid-column:1/-1; text-align:center; color:var(--muted); padding:24px;">Chưa có tư liệu nào trong kho. Hãy chọn tệp bên trái để tải lên.</div>';
+    return;
+  }
+
+  grid.replaceChildren();
+  for (const asset of sceneAssetsList) {
+    const card = document.createElement('div');
+    card.className = 'scene-asset-card';
+
+    const thumbHtml =
+      asset.mediaType === 'video'
+        ? `<video src="${asset.url}" class="scene-asset-thumb" muted autoplay loop playsinline></video>`
+        : `<img src="${asset.url}" class="scene-asset-thumb" alt="${asset.name}" />`;
+
+    const sizeMb = (asset.fileSizeBytes / (1024 * 1024)).toFixed(1);
+
+    card.innerHTML = `
+      ${thumbHtml}
+      <div style="font-weight:600; font-size:12px; color:var(--gold-bright); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${asset.name}</div>
+      <div style="font-size:11px; color:var(--muted); display:flex; justify-content:space-between;">
+        <span>${asset.targetLayer || asset.layerTarget || 'background'}</span>
+        <span>${sizeMb} MB</span>
+      </div>
+      <div style="display:flex; gap:4px; margin-top:4px;">
+        <button type="button" class="btn-assign-asset" data-url="${asset.url}" data-target="${asset.targetLayer || asset.layerTarget || 'background'}" style="flex:1; font-size:11px; padding:3px 4px;">Gán Vào Layer</button>
+        <button type="button" class="btn-del-asset" data-id="${asset.id}" style="color:var(--danger); border-color:var(--danger); font-size:11px; padding:3px 6px;">🗑️</button>
+      </div>
+    `;
+
+    grid.appendChild(card);
+  }
+
+  grid.querySelectorAll<HTMLButtonElement>('.btn-assign-asset').forEach((btn) => {
+    btn.onclick = () => {
+      const url = btn.getAttribute('data-url');
+      const target = btn.getAttribute('data-target');
+      if (!url || !target) return;
+      pushSceneUndo();
+      const layer = activeSceneConfig.layers?.find((l) => l.id === target);
+      if (layer) {
+        layer.assetUrl = url;
+        renderLayerStackTable();
+        renderSceneEditorCanvas();
+        showToast(`Đã gán tư liệu vào layer [${target}]`);
+      }
+    };
+  });
+
+  grid.querySelectorAll<HTMLButtonElement>('.btn-del-asset').forEach((btn) => {
+    btn.onclick = async () => {
+      const id = btn.getAttribute('data-id');
+      if (!id) return;
+      if (!confirm('Bạn có chắc muốn xóa tư liệu cảnh này?')) return;
+      try {
+        await callAdminApi('/api/admin/scene/assets/delete', { id });
+        showToast('Đã xóa tư liệu');
+        void loadSceneAssets();
+      } catch (e: any) {
+        showToast(`Lỗi xóa: ${e.message}`);
+      }
+    };
+  });
+}
+
+async function loadScenePresets(): Promise<void> {
+  try {
+    const res = await callAdminApi('/api/admin/scene/presets');
+    scenePresetsList = res.presets || [];
+    const sel = document.getElementById('selScenePreset') as HTMLSelectElement | null;
+    if (!sel) return;
+    sel.replaceChildren();
+    for (const p of scenePresetsList) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = `${p.isBuiltin ? '🏛️' : '💾'} ${p.name}`;
+      sel.appendChild(opt);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function applyActiveSceneToLive(): Promise<void> {
+  try {
+    const res = await callAdminApi('/api/admin/scene/active/update', {
+      sceneConfig: activeSceneConfig
+    });
+    activeSceneConfig = res.sceneConfig;
+    showToast('⚡ Đã phát cấu hình cảnh Chùa lên LIVE qua WebSocket!');
+    if (res.snapshot) renderSnapshot(res.snapshot);
+  } catch (e: any) {
+    showToast(`Lỗi phát LIVE: ${e.message}`);
+  }
+}
+
+function initSceneStudio(): void {
+  document.querySelectorAll<HTMLButtonElement>('.audio-tab-btn[data-scenetab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.audio-tab-btn[data-scenetab]').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('#sceneStudioSection .audio-tab-content').forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+      const tabId = btn.getAttribute('data-scenetab');
+      if (tabId) {
+        document.getElementById(tabId)?.classList.add('active');
+        if (tabId === 'tabVisualEditor') {
+          renderSceneEditorCanvas();
+        }
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('#anchorChipsContainer [data-anchor]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-anchor') as any;
+      if (key) selectAnchor(key);
+    });
+  });
+
+  if (rngAnchorX) {
+    rngAnchorX.oninput = () => {
+      if (numAnchorX) numAnchorX.value = rngAnchorX.value;
+      updateSelectedAnchorCoords(Number(rngAnchorX.value), Number(rngAnchorY?.value || 520));
+    };
+  }
+  if (numAnchorX) {
+    numAnchorX.oninput = () => {
+      if (rngAnchorX) rngAnchorX.value = numAnchorX.value;
+      updateSelectedAnchorCoords(Number(numAnchorX.value), Number(rngAnchorY?.value || 520));
+    };
+  }
+  if (rngAnchorY) {
+    rngAnchorY.oninput = () => {
+      if (numAnchorY) numAnchorY.value = rngAnchorY.value;
+      updateSelectedAnchorCoords(Number(rngAnchorX?.value || 540), Number(rngAnchorY.value));
+    };
+  }
+  if (numAnchorY) {
+    numAnchorY.oninput = () => {
+      if (rngAnchorY) rngAnchorY.value = numAnchorY.value;
+      updateSelectedAnchorCoords(Number(rngAnchorX?.value || 540), Number(numAnchorY.value));
+    };
+  }
+  if (rngAnchorScale) {
+    rngAnchorScale.oninput = () => {
+      const sc = Number(rngAnchorScale.value);
+      if (lblAnchorScale) lblAnchorScale.textContent = `${Math.round(sc * 100)}%`;
+      updateSelectedAnchorCoords(
+        Number(rngAnchorX?.value || 540),
+        Number(rngAnchorY?.value || 520),
+        sc
+      );
+    };
+  }
+  if (chkAnchorVisible) {
+    chkAnchorVisible.onchange = () => {
+      updateSelectedAnchorCoords(
+        Number(rngAnchorX?.value || 540),
+        Number(rngAnchorY?.value || 520),
+        undefined,
+        chkAnchorVisible.checked
+      );
+    };
+  }
+
+  if (editorCanvas) {
+    editorCanvas.addEventListener('pointerdown', (e) => {
+      const rect = editorCanvas.getBoundingClientRect();
+      const scaleX = 1080 / rect.width;
+      const scaleY = 1920 / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+
+      const anchors = activeSceneConfig.anchors;
+      const candidateList: Array<{
+        key: typeof selectedAnchorKey;
+        ax: number;
+        ay: number;
+        radius: number;
+      }> = [
+        { key: 'buddhaStatue', ax: anchors.buddhaStatue.x, ay: anchors.buddhaStatue.y, radius: 70 },
+        { key: 'incenseBurner', ax: anchors.incenseBurner.x, ay: anchors.incenseBurner.y, radius: 60 },
+        { key: 'woodenFish', ax: anchors.woodenFish.x, ay: anchors.woodenFish.y, radius: 55 },
+        { key: 'templeBell', ax: anchors.templeBell.x, ay: anchors.templeBell.y, radius: 55 },
+        { key: 'ceremony', ax: anchors.ceremony.kneelX, ay: anchors.ceremony.kneelY, radius: 65 }
+      ];
+
+      for (const c of candidateList) {
+        const dist = Math.hypot(x - c.ax, y - c.ay);
+        if (dist <= c.radius) {
+          pushSceneUndo();
+          selectAnchor(c.key);
+          isDraggingAnchor = true;
+          return;
+        }
+      }
+    });
+
+    editorCanvas.addEventListener('pointermove', (e) => {
+      if (!isDraggingAnchor) return;
+      const rect = editorCanvas.getBoundingClientRect();
+      const scaleX = 1080 / rect.width;
+      const scaleY = 1920 / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+
+      updateSelectedAnchorCoords(x, y);
+
+      if (rngAnchorX) rngAnchorX.value = String(Math.round(x));
+      if (numAnchorX) numAnchorX.value = String(Math.round(x));
+      if (rngAnchorY) rngAnchorY.value = String(Math.round(y));
+      if (numAnchorY) numAnchorY.value = String(Math.round(y));
+    });
+
+    window.addEventListener('pointerup', () => {
+      isDraggingAnchor = false;
+    });
+  }
+
+  document.getElementById('btnApplySceneToLive')?.addEventListener('click', () => {
+    void applyActiveSceneToLive();
+  });
+
+  document.getElementById('btnApplyScenePreset')?.addEventListener('click', async () => {
+    const sel = document.getElementById('selScenePreset') as HTMLSelectElement | null;
+    const presetId = sel?.value;
+    if (!presetId) return;
+    try {
+      pushSceneUndo();
+      const res = await callAdminApi('/api/admin/scene/presets/apply', { id: presetId });
+      activeSceneConfig = res.sceneConfig;
+      updateSceneEditorUI();
+      renderSceneEditorCanvas();
+      showToast('Đã nạp preset và áp dụng lên LIVE thành công');
+      if (res.snapshot) renderSnapshot(res.snapshot);
+    } catch (e: any) {
+      showToast(`Lỗi áp dụng preset: ${e.message}`);
+    }
+  });
+
+  document.getElementById('btnSaveCurrentPreset')?.addEventListener('click', async () => {
+    const name = prompt('Nhập tên cho Preset mới:', 'Chánh Điện Thiết Kế');
+    if (!name || !name.trim()) return;
+    const presetId = `preset_${Date.now()}`;
+    const newPreset: ScenePresetItem = {
+      id: presetId,
+      name: name.trim(),
+      isBuiltin: false,
+      config: JSON.parse(JSON.stringify(activeSceneConfig)),
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    try {
+      await callAdminApi('/api/admin/scene/presets/save', { preset: newPreset });
+      showToast(`Đã lưu preset [${name}] vào SQLite`);
+      void loadScenePresets();
+    } catch (e: any) {
+      showToast(`Lỗi lưu preset: ${e.message}`);
+    }
+  });
+
+  document.getElementById('btnResetSceneDefault')?.addEventListener('click', async () => {
+    if (!confirm('Khôi phục toàn bộ cảnh và tọa độ pháp khí về mặc định ban đầu?')) return;
+    try {
+      pushSceneUndo();
+      const res = await callAdminApi('/api/admin/scene/reset');
+      activeSceneConfig = res.sceneConfig;
+      updateSceneEditorUI();
+      renderSceneEditorCanvas();
+      showToast('Đã khôi phục cảnh về mặc định');
+      if (res.snapshot) renderSnapshot(res.snapshot);
+    } catch (e: any) {
+      showToast(`Lỗi reset: ${e.message}`);
+    }
+  });
+
+  document.getElementById('btnUndoScene')?.addEventListener('click', () => {
+    if (sceneUndoStack.length === 0) {
+      showToast('Không có thao tác nào để hoàn tác');
+      return;
+    }
+    const prev = sceneUndoStack.pop()!;
+    sceneRedoStack.push(JSON.parse(JSON.stringify(activeSceneConfig)));
+    activeSceneConfig = prev;
+    updateSceneEditorUI();
+    renderSceneEditorCanvas();
+    showToast('Đã hoàn tác (Undo)');
+  });
+
+  document.getElementById('btnRedoScene')?.addEventListener('click', () => {
+    if (sceneRedoStack.length === 0) {
+      showToast('Không có thao tác nào để làm lại');
+      return;
+    }
+    const next = sceneRedoStack.pop()!;
+    sceneUndoStack.push(JSON.parse(JSON.stringify(activeSceneConfig)));
+    activeSceneConfig = next;
+    updateSceneEditorUI();
+    renderSceneEditorCanvas();
+    showToast('Đã làm lại (Redo)');
+  });
+
+  document.getElementById('btnSaveLayerConfig')?.addEventListener('click', () => {
+    void applyActiveSceneToLive();
+  });
+
+  document.getElementById('btnSaveAnchorsManual')?.addEventListener('click', () => {
+    const cer = activeSceneConfig.anchors.ceremony;
+    const cong = activeSceneConfig.anchors.congregation;
+
+    const spX = document.getElementById('inpCeremonySpawnX') as HTMLInputElement | null;
+    const spY = document.getElementById('inpCeremonySpawnY') as HTMLInputElement | null;
+    const knX = document.getElementById('inpCeremonyKneelX') as HTMLInputElement | null;
+    const knY = document.getElementById('inpCeremonyKneelY') as HTMLInputElement | null;
+    const exX = document.getElementById('inpCeremonyExitX') as HTMLInputElement | null;
+    const exY = document.getElementById('inpCeremonyExitY') as HTMLInputElement | null;
+
+    if (cer && spX && spY && knX && knY && exX && exY) {
+      cer.spawnX = Number(spX.value);
+      cer.spawnY = Number(spY.value);
+      cer.kneelX = Math.max(300, Math.min(780, Number(knX.value)));
+      cer.kneelY = Math.max(960, Math.min(1400, Number(knY.value)));
+      cer.exitX = Number(exX.value);
+      cer.exitY = Number(exY.value);
+    }
+
+    const yT = document.getElementById('inpCongYTop') as HTMLInputElement | null;
+    const hT = document.getElementById('inpCongHalfTop') as HTMLInputElement | null;
+    const yB = document.getElementById('inpCongYBottom') as HTMLInputElement | null;
+    const hB = document.getElementById('inpCongHalfBottom') as HTMLInputElement | null;
+
+    if (cong && yT && hT && yB && hB) {
+      cong.yTop = Math.max(1100, Number(yT.value));
+      cong.halfTop = Number(hT.value);
+      cong.yBottom = Number(yB.value);
+      cong.halfBottom = Number(hB.value);
+    }
+
+    renderSceneEditorCanvas();
+    void applyActiveSceneToLive();
+  });
+
+  const btnUploadAsset = document.getElementById('btnUploadSceneAsset');
+  const inpAssetFile = document.getElementById('inpSceneAssetFile') as HTMLInputElement | null;
+  const inpAssetName = document.getElementById('inpSceneAssetName') as HTMLInputElement | null;
+  const selAssetTarget = document.getElementById('selSceneAssetLayerTarget') as HTMLSelectElement | null;
+  const uploadStatus = document.getElementById('sceneAssetUploadStatus');
+
+  if (btnUploadAsset && inpAssetFile) {
+    btnUploadAsset.onclick = async () => {
+      const file = inpAssetFile.files?.[0];
+      if (!file) {
+        showToast('Vui lòng chọn tệp ảnh hoặc video');
+        return;
+      }
+      try {
+        btnUploadAsset.textContent = '⏳ Đang tải lên...';
+        btnUploadAsset.setAttribute('disabled', 'true');
+        if (uploadStatus) uploadStatus.textContent = `Đang gửi ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`;
+
+        const res = await fetch('/api/admin/scene/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': file.type || 'image/png',
+            'X-Admin-Token': adminToken,
+            'X-File-Name': encodeURIComponent(file.name),
+            'X-Asset-Name': encodeURIComponent(inpAssetName?.value || file.name),
+            'X-Layer-Target': selAssetTarget?.value || 'background'
+          },
+          body: file
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+        showToast(`Tải lên thành công: ${data.asset.name}`);
+        if (uploadStatus) uploadStatus.textContent = '✓ Tải lên hoàn tất';
+        if (inpAssetName) inpAssetName.value = '';
+        inpAssetFile.value = '';
+        void loadSceneAssets();
+      } catch (e: any) {
+        showToast(`Lỗi upload: ${e.message}`);
+        if (uploadStatus) uploadStatus.textContent = `✗ Lỗi: ${e.message}`;
+      } finally {
+        btnUploadAsset.textContent = '📤 Tải Lên Tư Liệu';
+        btnUploadAsset.removeAttribute('disabled');
+      }
+    };
+  }
+
+  document.getElementById('btnRefreshSceneAssets')?.addEventListener('click', () => {
+    void loadSceneAssets();
+  });
+
+  selectAnchor('buddhaStatue');
+  renderSceneEditorCanvas();
+  renderLayerStackTable();
+  void loadSceneAssets();
+  void loadScenePresets();
+}
+
 connectAdminWs();
 void loadAudioTracks();
 void loadPlaylists();
+initSceneStudio();

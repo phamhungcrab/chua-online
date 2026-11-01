@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { DEFAULT_EVENT_RULES, DEFAULT_SETTINGS } from '../../shared/constants.ts';
+import {
+  BUILTIN_SCENE_PRESETS,
+  DEFAULT_EVENT_RULES,
+  DEFAULT_SCENE_CONFIG,
+  DEFAULT_SETTINGS
+} from '../../shared/constants.ts';
 import type {
   AudioCategory,
   AudioPlaylist,
@@ -10,6 +15,10 @@ import type {
   EventActionRule,
   OfferingKind,
   PrayerRegistryItem,
+  SceneAssetItem,
+  SceneConfig,
+  SceneLayerId,
+  ScenePresetItem,
   SeatedViewer,
   TempleSettings
 } from '../../shared/types.ts';
@@ -121,7 +130,43 @@ export class SqlitePersistenceStore {
         is_active INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS scene_assets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        target_layer TEXT NOT NULL,
+        media_type TEXT NOT NULL,
+        file_size_bytes INTEGER NOT NULL,
+        mime_type TEXT NOT NULL,
+        width INTEGER NOT NULL DEFAULT 0,
+        height INTEGER NOT NULL DEFAULT 0,
+        url TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS scene_presets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        is_builtin INTEGER NOT NULL DEFAULT 0,
+        config_json TEXT NOT NULL,
+        preview_thumbnail TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
     `);
+
+    try {
+      const presetCount = this.db.prepare('SELECT COUNT(*) as c FROM scene_presets').get() as { c: number } | undefined;
+      if (!presetCount || presetCount.c === 0) {
+        for (const p of BUILTIN_SCENE_PRESETS) {
+          this.saveScenePreset(p);
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
 
   public loadSettings(): TempleSettings {
@@ -562,6 +607,163 @@ export class SqlitePersistenceStore {
   public deletePlaylist(id: string): boolean {
     const res = this.db.prepare('DELETE FROM audio_playlists WHERE id = ?').run(id);
     return res.changes > 0;
+  }
+
+  // ======================================================================
+  // SCENE & BACKGROUND ASSET / PRESET MANAGEMENT
+  // ======================================================================
+
+  public saveSceneAsset(asset: SceneAssetItem): void {
+    this.db
+      .prepare(`
+        INSERT INTO scene_assets (
+          id, name, filename, filepath, target_layer, media_type,
+          file_size_bytes, mime_type, width, height, url, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          target_layer = excluded.target_layer,
+          width = excluded.width,
+          height = excluded.height
+      `)
+      .run(
+        asset.id,
+        asset.name,
+        asset.filename,
+        asset.filepath,
+        asset.targetLayer,
+        asset.mediaType,
+        asset.fileSizeBytes,
+        asset.mimeType,
+        asset.width ?? 0,
+        asset.height ?? 0,
+        asset.url,
+        asset.createdAt
+      );
+  }
+
+  public listSceneAssets(targetLayer?: SceneLayerId): SceneAssetItem[] {
+    let rows: any[];
+    if (targetLayer) {
+      rows = this.db
+        .prepare('SELECT * FROM scene_assets WHERE target_layer = ? ORDER BY created_at DESC')
+        .all(targetLayer);
+    } else {
+      rows = this.db.prepare('SELECT * FROM scene_assets ORDER BY created_at DESC').all();
+    }
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      filename: r.filename,
+      filepath: r.filepath,
+      targetLayer: r.target_layer as SceneLayerId,
+      mediaType: r.media_type as 'image' | 'video',
+      fileSizeBytes: r.file_size_bytes,
+      mimeType: r.mime_type,
+      width: r.width,
+      height: r.height,
+      url: r.url,
+      createdAt: r.created_at
+    }));
+  }
+
+  public getSceneAsset(id: string): SceneAssetItem | undefined {
+    const r = this.db.prepare('SELECT * FROM scene_assets WHERE id = ?').get(id) as any;
+    if (!r) return undefined;
+    return {
+      id: r.id,
+      name: r.name,
+      filename: r.filename,
+      filepath: r.filepath,
+      targetLayer: r.target_layer as SceneLayerId,
+      mediaType: r.media_type as 'image' | 'video',
+      fileSizeBytes: r.file_size_bytes,
+      mimeType: r.mime_type,
+      width: r.width,
+      height: r.height,
+      url: r.url,
+      createdAt: r.created_at
+    };
+  }
+
+  public deleteSceneAsset(id: string): boolean {
+    const asset = this.getSceneAsset(id);
+    if (!asset) return false;
+    try {
+      if (fs.existsSync(asset.filepath)) {
+        fs.unlinkSync(asset.filepath);
+      }
+    } catch {
+      // ignore
+    }
+    const info = this.db.prepare('DELETE FROM scene_assets WHERE id = ?').run(id);
+    return info.changes > 0;
+  }
+
+  public loadActiveSceneConfig(): SceneConfig {
+    const row = this.db
+      .prepare('SELECT value_json FROM kv_store WHERE key = ?')
+      .get('active_scene_config') as { value_json: string } | undefined;
+    if (!row) {
+      this.saveActiveSceneConfig(DEFAULT_SCENE_CONFIG);
+      return { ...DEFAULT_SCENE_CONFIG };
+    }
+    try {
+      const parsed = JSON.parse(row.value_json);
+      return { ...DEFAULT_SCENE_CONFIG, ...parsed };
+    } catch {
+      return { ...DEFAULT_SCENE_CONFIG };
+    }
+  }
+
+  public saveActiveSceneConfig(config: SceneConfig): void {
+    this.db
+      .prepare(
+        'INSERT INTO kv_store (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at'
+      )
+      .run('active_scene_config', JSON.stringify(config), Date.now());
+  }
+
+  public loadScenePresets(): ScenePresetItem[] {
+    const rows = this.db
+      .prepare('SELECT * FROM scene_presets ORDER BY is_builtin DESC, created_at ASC')
+      .all() as any[];
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      isBuiltin: Boolean(r.is_builtin),
+      config: JSON.parse(r.config_json),
+      thumbnailUrl: r.preview_thumbnail || undefined,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at
+    }));
+  }
+
+  public saveScenePreset(preset: ScenePresetItem): void {
+    this.db
+      .prepare(`
+        INSERT INTO scene_presets (id, name, is_builtin, config_json, preview_thumbnail, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          config_json = excluded.config_json,
+          preview_thumbnail = excluded.preview_thumbnail,
+          updated_at = excluded.updated_at
+      `)
+      .run(
+        preset.id,
+        preset.name,
+        preset.isBuiltin ? 1 : 0,
+        JSON.stringify(preset.config),
+        preset.thumbnailUrl || null,
+        preset.createdAt,
+        preset.updatedAt || Date.now()
+      );
+  }
+
+  public deleteScenePreset(id: string): boolean {
+    const info = this.db.prepare('DELETE FROM scene_presets WHERE id = ? AND is_builtin = 0').run(id);
+    return info.changes > 0;
   }
 
   public close(): void {

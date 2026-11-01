@@ -7,10 +7,15 @@ import type {
   FloatingLanternItem,
   OfferingKind,
   QualityPreset,
+  RitualAnchorsConfig,
+  SceneConfig,
+  SceneLayerConfig,
+  SceneLayerId,
   SeatedViewer,
   TempleSettings,
   TimeOfDayAmbience
 } from '../../../shared/types.ts';
+import { DEFAULT_SCENE_CONFIG } from '../../../shared/constants.ts';
 import {
   buildProceduralAtlas,
   type BakedAtlas,
@@ -160,6 +165,8 @@ export class TempleSceneEngine {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly atlas: BakedAtlas;
   private readonly backdropCache: Map<TimeOfDayAmbience, HTMLCanvasElement> = new Map();
+  private sceneConfig: SceneConfig = { ...DEFAULT_SCENE_CONFIG };
+  private readonly customLayerAssets: Map<string, HTMLImageElement | HTMLVideoElement> = new Map();
   private pixiVerifyBadge = `PixiJS v${PIXI.VERSION} + 2.5D Layered Stage`;
 
   private transparentBg = false;
@@ -342,10 +349,11 @@ export class TempleSceneEngine {
       100: [10, 10]
     };
     const [cols, rows] = gridPresets[cap] || gridPresets[24];
-    const yTop = 1248;
-    const yBot = 1705;
-    const halfTop = 365;
-    const halfBot = 475;
+    const cong = this.sceneConfig?.anchors?.congregation;
+    const yTop = cong?.yTop ?? 1248;
+    const yBot = cong?.yBottom ?? 1705;
+    const halfTop = cong?.halfTop ?? 365;
+    const halfBot = cong?.halfBottom ?? 475;
 
     const hallSeats: SeatCoord[] = [];
     for (let r = 0; r < rows; r++) {
@@ -384,8 +392,12 @@ export class TempleSceneEngine {
     viewers: SeatedViewer[],
     lanterns: FloatingLanternItem[],
     settings: TempleSettings,
-    incenseBurned: number
+    incenseBurned: number,
+    sceneConfig?: SceneConfig
   ): void {
+    if (sceneConfig) {
+      this.applySceneConfig(sceneConfig);
+    }
     this.quality = settings.qualityPreset;
     this.targetFps = settings.targetFps;
     this.timeOfDay = settings.timeOfDay;
@@ -468,6 +480,154 @@ export class TempleSceneEngine {
         });
       }
     });
+  }
+
+  public getSceneConfig(): SceneConfig {
+    return this.sceneConfig;
+  }
+
+  public findLayer(id: SceneLayerId): SceneLayerConfig | undefined {
+    return this.sceneConfig?.layers?.find((l) => l.id === id);
+  }
+
+  public applySceneConfig(config: SceneConfig): void {
+    if (!config) return;
+    this.sceneConfig = config;
+    if (config.ambience) {
+      this.timeOfDay = config.ambience;
+    }
+    if (config.anchors?.congregation) {
+      this.rebuildSeatLayout(this.seatCapacity);
+    }
+    // Preload custom layer assets
+    for (const layer of config.layers || []) {
+      if (layer.assetUrl && !this.customLayerAssets.has(layer.assetUrl)) {
+        if (layer.mediaType === 'video' || layer.assetUrl.endsWith('.mp4') || layer.assetUrl.endsWith('.webm')) {
+          const video = document.createElement('video');
+          video.src = layer.assetUrl;
+          video.crossOrigin = 'anonymous';
+          video.loop = true;
+          video.muted = true;
+          video.playsInline = true;
+          video.autoplay = true;
+          void video.play().catch(() => {});
+          this.customLayerAssets.set(layer.assetUrl, video);
+        } else {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.src = layer.assetUrl;
+          img.onload = () => {
+            this.customLayerAssets.set(layer.assetUrl!, img);
+          };
+          this.customLayerAssets.set(layer.assetUrl, img);
+        }
+      }
+    }
+  }
+
+  private drawCustomOrProceduralLayer(
+    layerId: SceneLayerId,
+    drawProceduralCallback: () => void
+  ): void {
+    const layer = this.findLayer(layerId);
+    if (layer && !layer.visible) return;
+
+    const customMedia = layer?.assetUrl ? this.customLayerAssets.get(layer.assetUrl) : null;
+    const hideProcedural = layer ? layer.hideProcedural : false;
+
+    if (!customMedia || !hideProcedural) {
+      drawProceduralCallback();
+    }
+
+    if (customMedia && layer) {
+      this.drawTransformedLayer(customMedia, layer);
+    }
+  }
+
+  private drawTransformedLayer(
+    media: CanvasImageSource,
+    layer: SceneLayerConfig
+  ): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, layer.opacity ?? 1.0));
+    if (layer.blendMode && layer.blendMode !== 'normal') {
+      ctx.globalCompositeOperation = layer.blendMode === 'add' ? 'lighter' : layer.blendMode;
+    }
+
+    const sw = (media as any).naturalWidth || (media as any).videoWidth || (media as any).width || 1080;
+    const sh = (media as any).naturalHeight || (media as any).videoHeight || (media as any).height || 1920;
+
+    const targetW = 1080;
+    const targetH = 1920;
+
+    switch (layer.scaleMode) {
+      case 'cover': {
+        const scale = Math.max(targetW / sw, targetH / sh);
+        const dw = sw * scale * (layer.scaleX || 1);
+        const dh = sh * scale * (layer.scaleY || 1);
+        const dx = (targetW - dw) / 2 + (layer.x || 0);
+        const dy = (targetH - dh) / 2 + (layer.y || 0);
+
+        if (layer.rotation) {
+          ctx.translate(dx + dw / 2, dy + dh / 2);
+          ctx.rotate((layer.rotation * Math.PI) / 180);
+          ctx.drawImage(media, -dw / 2, -dh / 2, dw, dh);
+        } else {
+          ctx.drawImage(media, dx, dy, dw, dh);
+        }
+        break;
+      }
+      case 'contain': {
+        const scale = Math.min(targetW / sw, targetH / sh);
+        const dw = sw * scale * (layer.scaleX || 1);
+        const dh = sh * scale * (layer.scaleY || 1);
+        const dx = (targetW - dw) / 2 + (layer.x || 0);
+        const dy = (targetH - dh) / 2 + (layer.y || 0);
+
+        if (layer.rotation) {
+          ctx.translate(dx + dw / 2, dy + dh / 2);
+          ctx.rotate((layer.rotation * Math.PI) / 180);
+          ctx.drawImage(media, -dw / 2, -dh / 2, dw, dh);
+        } else {
+          ctx.drawImage(media, dx, dy, dw, dh);
+        }
+        break;
+      }
+      case 'center': {
+        const dw = sw * (layer.scaleX || 1);
+        const dh = sh * (layer.scaleY || 1);
+        const dx = (targetW - dw) / 2 + (layer.x || 0);
+        const dy = (targetH - dh) / 2 + (layer.y || 0);
+
+        if (layer.rotation) {
+          ctx.translate(dx + dw / 2, dy + dh / 2);
+          ctx.rotate((layer.rotation * Math.PI) / 180);
+          ctx.drawImage(media, -dw / 2, -dh / 2, dw, dh);
+        } else {
+          ctx.drawImage(media, dx, dy, dw, dh);
+        }
+        break;
+      }
+      case 'custom':
+      default: {
+        const dw = sw * (layer.scaleX || 1);
+        const dh = sh * (layer.scaleY || 1);
+        const dx = layer.x || 0;
+        const dy = layer.y || 0;
+
+        if (layer.rotation) {
+          ctx.translate(dx + dw / 2, dy + dh / 2);
+          ctx.rotate((layer.rotation * Math.PI) / 180);
+          ctx.drawImage(media, -dw / 2, -dh / 2, dw, dh);
+        } else {
+          ctx.drawImage(media, dx, dy, dw, dh);
+        }
+        break;
+      }
+    }
+
+    ctx.restore();
   }
 
   public enqueueCeremony(params: {
@@ -1091,122 +1251,177 @@ export class TempleSceneEngine {
 
     ctx.clearRect(0, 0, 1080, 1920);
 
-    // 1. Sanctuary Backdrop (unless OBS transparent mode is active)
-    if (!this.transparentBg) {
-      const bg = this.getOrBakeSanctuaryBackdrop(this.timeOfDay);
-      ctx.drawImage(bg, 0, 0);
-    }
+    // 1. Sanctuary Backdrop Layer (supports custom asset replacement or procedural backdrop)
+    this.drawCustomOrProceduralLayer('background', () => {
+      if (!this.transparentBg) {
+        const bg = this.getOrBakeSanctuaryBackdrop(this.timeOfDay);
+        ctx.drawImage(bg, 0, 0);
+      }
+    });
 
-    // 2. Rotating & Breathing Multi-Ring Halo + Amitabha Buddha Statue
-    this.haloBoost = Math.max(0, this.haloBoost - dt * 0.45);
-    const haloScale = (1.02 + 0.04 * Math.sin(t * 1.4) + this.haloBoost * 0.12) * this.lightingWarmth;
-    ctx.save();
-    ctx.translate(540, 445);
-    ctx.rotate(t * 0.12);
-    ctx.globalAlpha = Math.min(1, 0.78 + 0.12 * Math.sin(t * 1.8) + this.haloBoost * 0.2);
-    const hw = 520 * haloScale;
-    ctx.drawImage(this.atlas.haloWheel, -hw * 0.5, -hw * 0.5, hw, hw);
-    ctx.restore();
+    // 2. Architecture Layer (Pillars, roof eaves, arches)
+    this.drawCustomOrProceduralLayer('architecture', () => {
+      // Procedural architecture is baked into sanctuary backdrop; custom layer can overlay custom columns/eaves
+    });
 
-    // Draw Amitabha Buddha Statue centered on altar
-    ctx.drawImage(this.atlas.buddhaStatue, 540 - 230, 250, 460, 540);
+    // 3. Altar Layer (Statue, Halo, Bronze Censer, Bell & Wooden Fish)
+    this.drawCustomOrProceduralLayer('altar', () => {
+      const anchors = this.sceneConfig?.anchors;
 
-    // 3. Temple Bronze Bell (Right) & Wooden Fish (Left) + Bronze Censer (Center)
-    this.bellSwing = Math.max(0, this.bellSwing - dt * 0.85);
-    this.moPulse = Math.max(0, this.moPulse - dt * 2.4);
+      // Amitabha Buddha Statue & Sacred Halo
+      const statueCfg = anchors?.buddhaStatue;
+      if (statueCfg?.visible !== false) {
+        const bx = statueCfg?.x ?? 540;
+        const by = statueCfg?.y ?? 520;
+        const bScale = statueCfg?.scale ?? 1.0;
 
-    // Wooden Fish (Mõ Gỗ at x=210, y=855)
-    ctx.save();
-    ctx.translate(210, 855);
-    const moScale = 1 + this.moPulse * 0.12;
-    ctx.scale(moScale, moScale);
-    ctx.drawImage(this.atlas.woodenFish, -70, -60);
-    ctx.restore();
+        this.haloBoost = Math.max(0, this.haloBoost - dt * 0.45);
+        const haloScale = (1.02 + 0.04 * Math.sin(t * 1.4) + this.haloBoost * 0.12) * this.lightingWarmth * bScale;
+        ctx.save();
+        ctx.translate(bx, by - 75);
+        ctx.rotate(t * 0.12);
+        ctx.globalAlpha = Math.min(1, 0.78 + 0.12 * Math.sin(t * 1.8) + this.haloBoost * 0.2);
+        const hw = 520 * haloScale;
+        ctx.drawImage(this.atlas.haloWheel, -hw * 0.5, -hw * 0.5, hw, hw);
+        ctx.restore();
 
-    // Temple Bronze Bell (Đại Hồng Chung at x=870, y=795)
-    ctx.save();
-    ctx.translate(870, 720);
-    ctx.rotate(Math.sin(t * 9) * 0.06 * this.bellSwing);
-    ctx.drawImage(this.atlas.templeBell, -85, -20);
-    ctx.restore();
+        const sw = 460 * bScale;
+        const sh = 540 * bScale;
+        ctx.drawImage(this.atlas.buddhaStatue, bx - sw * 0.5, by - sh * 0.5, sw, sh);
+      }
 
-    // Glowing Incense Sticks inside the Bronze Censer (x=540, y=845)
-    for (let i = 0; i < this.activeIncenseSticks; i++) {
-      const u =
-        this.activeIncenseSticks === 1
-          ? 0
-          : (i / (this.activeIncenseSticks - 1) - 0.5) * 2;
-      const sx = 540 + u * 34;
-      const sy = 842;
-      const tipX = sx + u * 10;
-      const tipY = sy - 64 - (i % 3) * 5;
+      // Wooden Fish (Mõ Gỗ)
+      const fishCfg = anchors?.woodenFish;
+      if (fishCfg?.visible !== false) {
+        const fx = fishCfg?.x ?? 210;
+        const fy = fishCfg?.y ?? 855;
+        const fScale = fishCfg?.scale ?? 1.0;
+        this.moPulse = Math.max(0, this.moPulse - dt * 2.4);
 
-      ctx.strokeStyle = '#9E2A1B';
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.lineTo(tipX, tipY);
-      ctx.stroke();
+        ctx.save();
+        ctx.translate(fx, fy);
+        const moScale = (1 + this.moPulse * 0.12) * fScale;
+        ctx.scale(moScale, moScale);
+        ctx.drawImage(this.atlas.woodenFish, -70, -60);
+        ctx.restore();
+      }
 
-      // Glowing ember tip
-      ctx.fillStyle = i % 2 === 0 ? '#FFE066' : '#FF7733';
-      ctx.beginPath();
-      ctx.arc(tipX, tipY, 2.8 + 0.8 * Math.sin(t * 6 + i), 0, Math.PI * 2);
-      ctx.fill();
-    }
+      // Temple Bronze Bell (Đại Hồng Chung)
+      const bellCfg = anchors?.templeBell;
+      if (bellCfg?.visible !== false) {
+        const bellX = bellCfg?.x ?? 870;
+        const bellY = bellCfg?.y ?? 795;
+        const bellScale = bellCfg?.scale ?? 1.0;
+        this.bellSwing = Math.max(0, this.bellSwing - dt * 0.85);
 
-    // Bronze Censer body in front of stick bases
-    ctx.drawImage(this.atlas.bronzeCenser, 540 - 120, 760);
+        ctx.save();
+        ctx.translate(bellX, bellY - 75);
+        ctx.rotate(Math.sin(t * 9) * 0.06 * this.bellSwing);
+        ctx.scale(bellScale, bellScale);
+        ctx.drawImage(this.atlas.templeBell, -85, -20);
+        ctx.restore();
+      }
 
-    // 4. Curling Incense Smoke (Pooled)
-    this.updateAndDrawSmoke(dt, t);
+      // Bronze Censer & Glowing Incense Sticks
+      const censerCfg = anchors?.incenseBurner;
+      if (censerCfg?.visible !== false) {
+        const cx = censerCfg?.x ?? 540;
+        const cy = censerCfg?.y ?? 845;
+        const cScale = censerCfg?.scale ?? 1.0;
 
-    // 5. Monastic Teachers + Empty Cushion Mats
-    for (const s of this.seats) {
-      const matImg = s.isVip ? this.atlas.cushionVip : this.atlas.cushionStandard;
-      const mw = 140 * s.scale;
-      const mh = 64 * s.scale;
-      ctx.drawImage(matImg, s.x - mw * 0.5, s.y - mh * 0.45, mw, mh);
-    }
+        for (let i = 0; i < this.activeIncenseSticks; i++) {
+          const u =
+            this.activeIncenseSticks === 1
+              ? 0
+              : (i / (this.activeIncenseSticks - 1) - 0.5) * 2;
+          const sx = cx + u * 34 * cScale;
+          const sy = cy - 3 * cScale;
+          const tipX = sx + u * 10 * cScale;
+          const tipY = sy - (64 + (i % 3) * 5) * cScale;
 
-    for (const tc of TEACHERS) {
-      const frame = this.atlas.characters[tc.skin].sitMeditate;
-      const w = 160 * tc.scale;
-      const h = 210 * tc.scale;
-      const breathe = Math.sin(t * 1.3) * 1.8;
-      ctx.drawImage(frame, tc.x - w * 0.5, tc.y - h * 0.88 + breathe, w, h);
-      this.drawNamePill(tc.name, tc.x, tc.y - h * 0.86 - 10, tc.scale, true, 0, 150);
-    }
+          ctx.strokeStyle = '#9E2A1B';
+          ctx.lineWidth = 2.4 * cScale;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(tipX, tipY);
+          ctx.stroke();
 
-    // 6. Depth-Sorted Viewer Characters (Sorted strictly by Y so front rows overlap back rows cleanly)
-    this.updateAndDrawActors(dt, t, nowMs);
+          // Glowing ember tip
+          ctx.fillStyle = i % 2 === 0 ? '#FFE066' : '#FF7733';
+          ctx.beginPath();
+          ctx.arc(tipX, tipY, (2.8 + 0.8 * Math.sin(t * 6 + i)) * cScale, 0, Math.PI * 2);
+          ctx.fill();
+        }
 
-    // 7. Central Red-Carpet Ceremonial Queue (Walks up -> Kneels -> Three Bows -> Offering -> Leaves)
-    this.updateAndDrawCeremonyQueue(dt, t);
+        // Bronze Censer Body
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(cScale, cScale);
+        ctx.drawImage(this.atlas.bronzeCenser, -120, -85);
+        ctx.restore();
+      }
 
-    // 8. Foreground Lotus Pond & Floating Prayer Lanterns
-    this.drawFloatingLanterns(t);
+      // Curling Incense Smoke
+      this.updateAndDrawSmoke(dt, t);
+    });
 
-    // 9. Atmospheric Gold Sparks, Falling Lotus Petals, Bell Sound Waves & Floating Merit Banners
-    this.updateAndDrawAtmosphereAndFx(dt, t);
+    // 4. Floor Layer (Cushions & Prayer Carpets)
+    this.drawCustomOrProceduralLayer('floor', () => {
+      for (const s of this.seats) {
+        const matImg = s.isVip ? this.atlas.cushionVip : this.atlas.cushionStandard;
+        const mw = 140 * s.scale;
+        const mh = 64 * s.scale;
+        ctx.drawImage(matImg, s.x - mw * 0.5, s.y - mh * 0.45, mw, mh);
+      }
+    });
 
-    // 10. TikTok 9:16 Safe Zones Guidelines Overlay (if enabled)
-    if (this.showSafeZones) {
-      this.drawTikTokSafeZones();
-    }
+    // 5. Characters Layer (Monastic Teachers, Worshippers & Central Ceremony Devotee)
+    this.drawCustomOrProceduralLayer('characters', () => {
+      for (const tc of TEACHERS) {
+        const frame = this.atlas.characters[tc.skin].sitMeditate;
+        const w = 160 * tc.scale;
+        const h = 210 * tc.scale;
+        const breathe = Math.sin(t * 1.3) * 1.8;
+        ctx.drawImage(frame, tc.x - w * 0.5, tc.y - h * 0.88 + breathe, w, h);
+        this.drawNamePill(tc.name, tc.x, tc.y - h * 0.86 - 10, tc.scale, true, 0, 150);
+      }
+
+      this.updateAndDrawActors(dt, t, nowMs);
+      this.updateAndDrawCeremonyQueue(dt, t);
+    });
+
+    // 6. Foreground Layer (Lotus Pond & Floating Prayer Lanterns)
+    this.drawCustomOrProceduralLayer('foreground', () => {
+      this.drawFloatingLanterns(t);
+    });
+
+    // 7. Atmospheric Particles Layer (Gold Sparks, Lotus Petals, Sound Waves & Merit Banners)
+    this.drawCustomOrProceduralLayer('particles', () => {
+      this.updateAndDrawAtmosphereAndFx(dt, t);
+    });
+
+    // 8. HUD & Broadcast Guidelines Layer
+    this.drawCustomOrProceduralLayer('hud', () => {
+      if (this.showSafeZones) {
+        this.drawTikTokSafeZones();
+      }
+    });
   }
 
   private updateAndDrawSmoke(dt: number, t: number): void {
     const ctx = this.ctx;
     const maxSmoke = this.quality === 'low' ? 16 : this.quality === 'medium' ? 36 : 64;
 
+    const cX = this.sceneConfig?.anchors?.incenseBurner?.x ?? 540;
+    const cY = this.sceneConfig?.anchors?.incenseBurner?.y ?? 845;
+
     if (Math.random() < 0.55 * this.smokeDensity) {
       for (let i = 0; i < maxSmoke; i++) {
         const s = this.smokePool[i];
         if (!s.active) {
           s.active = true;
-          s.x = 540 + (Math.random() - 0.5) * 44;
-          s.y = 775;
+          s.x = cX + (Math.random() - 0.5) * 44;
+          s.y = cY - 70;
           s.vx = (Math.random() - 0.5) * 14;
           s.vy = -(48 + Math.random() * 26);
           s.r0 = 10 + Math.random() * 6;
@@ -1410,17 +1625,26 @@ export class TempleSceneEngine {
     c.stageTimer += dt;
     c.totalElapsed += dt;
 
+    const cerAnchor = this.sceneConfig?.anchors?.ceremony;
+    const spawnX = cerAnchor?.spawnX ?? 540;
+    const spawnY = cerAnchor?.spawnY ?? 1760;
+    const kneelX = cerAnchor?.kneelX ?? 540;
+    const kneelY = cerAnchor?.kneelY ?? 1060;
+    const exitX = cerAnchor?.exitX ?? 540;
+    const exitY = cerAnchor?.exitY ?? 1840;
+
     // Stage State Machine: ENTER -> PRAY -> BOW_1 -> BOW_2 -> BOW_3 -> OFFER -> EXIT
     switch (c.stage) {
       case 'ENTER': {
         const enterDuration = 1.35;
         const progress = Math.min(1, c.stageTimer / enterDuration);
         c.alpha = Math.min(1, c.alpha + dt * 2.5);
-        c.x = 540;
-        c.y = 1760 - (1760 - 1120) * progress;
+        c.x = spawnX + (kneelX - spawnX) * progress;
+        c.y = spawnY + (kneelY - spawnY) * progress;
         c.poseKey = Math.floor(c.stageTimer * 6) % 2 === 0 ? 'walk1' : 'walk2';
         if (progress >= 1) {
-          c.y = 1120;
+          c.x = kneelX;
+          c.y = kneelY;
           c.stage = 'PRAY';
           c.stageTimer = 0;
         }
@@ -1458,9 +1682,13 @@ export class TempleSceneEngine {
         break;
       }
       case 'EXIT': {
-        c.poseKey = 'prayHands';
-        c.alpha = Math.max(0, 1 - c.stageTimer / 0.85);
-        if (c.stageTimer >= 0.85 || c.alpha <= 0.02) {
+        const exitDuration = 1.2;
+        const progress = Math.min(1, c.stageTimer / exitDuration);
+        c.x = kneelX + (exitX - kneelX) * progress;
+        c.y = kneelY + (exitY - kneelY) * progress;
+        c.poseKey = Math.floor(c.stageTimer * 6) % 2 === 0 ? 'walk1' : 'walk2';
+        c.alpha = Math.max(0, 1 - progress);
+        if (progress >= 1 || c.alpha <= 0.02) {
           this.currentCeremonyActor = null;
           return;
         }
@@ -1468,7 +1696,7 @@ export class TempleSceneEngine {
       }
     }
 
-    const scale = 0.72 + ((c.y - 1115) / 550) * 0.18;
+    const scale = 0.72 + ((c.y - 1000) / 700) * 0.18;
     const frame =
       (this.atlas.characters[c.skin] || this.atlas.characters.lam_female)[c.poseKey];
     const w = 160 * scale;

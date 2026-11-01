@@ -2,6 +2,10 @@ import type {
   CharacterSkinId,
   EventActionRule,
   FortuneStick,
+  RitualAnchorsConfig,
+  SceneConfig,
+  SceneLayerConfig,
+  ScenePresetItem,
   TempleSettings
 } from './types.ts';
 
@@ -396,5 +400,236 @@ export const DEFAULT_EVENT_RULES: readonly EventActionRule[] = [
       readTts: true,
       ttsTemplate: 'Cảm tạ Phật tử {{user.nickname}} thành tâm dâng {{gift.name}}. {{wish}}.'
     }
+  }
+];
+
+export const DEFAULT_SCENE_LAYERS: readonly SceneLayerConfig[] = [
+  {
+    id: 'background',
+    name: 'Không Gian Nền / Bầu Trời',
+    visible: true,
+    opacity: 1.0,
+    locked: false,
+    assetId: null,
+    assetUrl: null,
+    scaleMode: 'cover',
+    scaleX: 1.0,
+    scaleY: 1.0,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    hideProcedural: true
+  },
+  {
+    id: 'architecture',
+    name: 'Kiến Trúc Chánh Điện & Cột Đình',
+    visible: true,
+    opacity: 1.0,
+    locked: false,
+    assetId: null,
+    assetUrl: null,
+    scaleMode: 'cover',
+    scaleX: 1.0,
+    scaleY: 1.0,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    hideProcedural: false
+  },
+  {
+    id: 'altar',
+    name: 'Bàn Thờ & Tượng Phật',
+    visible: true,
+    opacity: 1.0,
+    locked: false,
+    assetId: null,
+    assetUrl: null,
+    scaleMode: 'contain',
+    scaleX: 1.0,
+    scaleY: 1.0,
+    x: 540,
+    y: 520,
+    rotation: 0,
+    hideProcedural: false
+  },
+  {
+    id: 'floor',
+    name: 'Sàn Chánh Điện & Thảm Lễ Bái',
+    visible: true,
+    opacity: 1.0,
+    locked: false,
+    assetId: null,
+    assetUrl: null,
+    scaleMode: 'cover',
+    scaleX: 1.0,
+    scaleY: 1.0,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    hideProcedural: false
+  },
+  {
+    id: 'characters',
+    name: 'Đạo Tràng Phật Tử & Sư Thầy',
+    visible: true,
+    opacity: 1.0,
+    locked: false,
+    scaleMode: 'contain',
+    scaleX: 1.0,
+    scaleY: 1.0,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    hideProcedural: false
+  },
+  {
+    id: 'ceremony',
+    name: 'Nghi Lễ Tam Bái & Dâng Lễ Vật',
+    visible: true,
+    opacity: 1.0,
+    locked: false,
+    scaleMode: 'contain',
+    scaleX: 1.0,
+    scaleY: 1.0,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    hideProcedural: false
+  },
+  {
+    id: 'foreground',
+    name: 'Hồ Sen Tiền Cảnh & Hoa Đăng',
+    visible: true,
+    opacity: 1.0,
+    locked: false,
+    assetId: null,
+    assetUrl: null,
+    scaleMode: 'cover',
+    scaleX: 1.0,
+    scaleY: 1.0,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    hideProcedural: false
+  },
+  {
+    id: 'particles',
+    name: 'Khói Trầm, Mưa Sen & Sóng Âm',
+    visible: true,
+    opacity: 1.0,
+    locked: false,
+    scaleMode: 'contain',
+    scaleX: 1.0,
+    scaleY: 1.0,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    hideProcedural: false
+  },
+  {
+    id: 'hud',
+    name: 'Khung Thông Tin & Vùng An Toàn TikTok',
+    visible: true,
+    opacity: 1.0,
+    locked: false,
+    scaleMode: 'contain',
+    scaleX: 1.0,
+    scaleY: 1.0,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    hideProcedural: false
+  }
+];
+
+export const DEFAULT_RITUAL_ANCHORS: RitualAnchorsConfig = {
+  buddhaStatue: { x: 540, y: 520, scale: 1.0, visible: true },
+  incenseBurner: { x: 540, y: 845, scale: 1.0, visible: true },
+  woodenFish: { x: 210, y: 855, scale: 1.0, visible: true },
+  templeBell: { x: 870, y: 720, scale: 1.0, visible: true },
+  congregation: { yTop: 1248, yBottom: 1705, halfTop: 365, halfBottom: 475, visible: true },
+  ceremony: { spawnX: 540, spawnY: 1780, kneelX: 540, kneelY: 1060, exitX: 180, exitY: 1780, visible: true }
+};
+
+export const DEFAULT_SCENE_CONFIG: SceneConfig = {
+  version: '1.0.0',
+  id: 'preset_sacred_hall',
+  name: 'Chánh Điện Tịnh Tâm (Mặc Định)',
+  ambience: 'SACRED_NIGHT',
+  transitionDurationMs: 600,
+  layers: [...DEFAULT_SCENE_LAYERS],
+  anchors: { ...DEFAULT_RITUAL_ANCHORS },
+  updatedAt: 1700000000000
+};
+
+export const BUILTIN_SCENE_PRESETS: readonly ScenePresetItem[] = [
+  {
+    id: 'preset_sacred_hall',
+    name: 'Chánh Điện Tịnh Tâm (Truyền Thống)',
+    isBuiltin: true,
+    config: {
+      ...DEFAULT_SCENE_CONFIG,
+      id: 'preset_sacred_hall',
+      name: 'Chánh Điện Tịnh Tâm (Truyền Thống)',
+      ambience: 'SACRED_NIGHT'
+    },
+    thumbnailUrl: '/assets/preset_sacred_hall.png',
+    createdAt: 1700000000000,
+    updatedAt: 1700000000000
+  },
+  {
+    id: 'preset_golden_pagoda',
+    name: 'Kim Các Đại Tự (Hoàng Hôn Vàng Son)',
+    isBuiltin: true,
+    config: {
+      ...DEFAULT_SCENE_CONFIG,
+      id: 'preset_golden_pagoda',
+      name: 'Kim Các Đại Tự (Hoàng Hôn Vàng Son)',
+      ambience: 'GOLDEN_DUSK',
+      anchors: {
+        ...DEFAULT_RITUAL_ANCHORS,
+        buddhaStatue: { x: 540, y: 510, scale: 1.05, visible: true },
+        incenseBurner: { x: 540, y: 850, scale: 1.02, visible: true }
+      }
+    },
+    thumbnailUrl: '/assets/preset_golden_pagoda.png',
+    createdAt: 1700000000000,
+    updatedAt: 1700000000000
+  },
+  {
+    id: 'preset_lotus_garden',
+    name: 'Ngự Uyển Sen Vàng (Ban Ngày Tịnh Minh)',
+    isBuiltin: true,
+    config: {
+      ...DEFAULT_SCENE_CONFIG,
+      id: 'preset_lotus_garden',
+      name: 'Ngự Uyển Sen Vàng (Ban Ngày Tịnh Minh)',
+      ambience: 'DAY_SERENE',
+      anchors: {
+        ...DEFAULT_RITUAL_ANCHORS,
+        congregation: { yTop: 1260, yBottom: 1720, halfTop: 380, halfBottom: 490, visible: true }
+      }
+    },
+    thumbnailUrl: '/assets/preset_lotus_garden.png',
+    createdAt: 1700000000000,
+    updatedAt: 1700000000000
+  },
+  {
+    id: 'preset_night_festival',
+    name: 'Đại Lễ Hoa Đăng (Lễ Hội Rực Rỡ)',
+    isBuiltin: true,
+    config: {
+      ...DEFAULT_SCENE_CONFIG,
+      id: 'preset_night_festival',
+      name: 'Đại Lễ Hoa Đăng (Lễ Hội Rực Rỡ)',
+      ambience: 'FESTIVAL_GLOW',
+      anchors: {
+        ...DEFAULT_RITUAL_ANCHORS,
+        ceremony: { spawnX: 540, spawnY: 1780, kneelX: 540, kneelY: 1040, exitX: 180, exitY: 1780, visible: true }
+      }
+    },
+    thumbnailUrl: '/assets/preset_night_festival.png',
+    createdAt: 1700000000000,
+    updatedAt: 1700000000000
   }
 ];

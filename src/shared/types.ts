@@ -382,6 +382,119 @@ export interface EventTraceItem {
 
 export type SystemResetScope = 'session' | 'config' | 'factory';
 
+export type SceneLayerId =
+  | 'background'
+  | 'architecture'
+  | 'altar'
+  | 'floor'
+  | 'characters'
+  | 'ceremony'
+  | 'foreground'
+  | 'particles'
+  | 'hud';
+
+export type ScaleMode = 'cover' | 'contain' | 'center' | 'custom';
+
+export interface SceneLayerConfig {
+  id: SceneLayerId;
+  order?: number;
+  name: string;
+  visible: boolean;
+  opacity: number;
+  locked: boolean;
+  assetId?: string | null;
+  assetUrl?: string | null;
+  mediaType?: 'image' | 'video';
+  scaleMode: ScaleMode;
+  scaleX: number;
+  scaleY: number;
+  x: number;
+  y: number;
+  rotation: number;
+  blendMode?: 'normal' | 'add' | 'screen' | 'multiply';
+  hideProcedural: boolean;
+}
+
+export interface RitualAnchorsConfig {
+  buddhaStatue: {
+    x: number;
+    y: number;
+    scale: number;
+    visible: boolean;
+  };
+  incenseBurner: {
+    x: number;
+    y: number;
+    scale: number;
+    visible: boolean;
+  };
+  woodenFish: {
+    x: number;
+    y: number;
+    scale: number;
+    visible: boolean;
+  };
+  templeBell: {
+    x: number;
+    y: number;
+    scale: number;
+    visible: boolean;
+  };
+  congregation: {
+    yTop: number;
+    yBottom: number;
+    halfTop: number;
+    halfBottom: number;
+    visible: boolean;
+  };
+  ceremony: {
+    spawnX: number;
+    spawnY: number;
+    kneelX: number;
+    kneelY: number;
+    exitX: number;
+    exitY: number;
+    visible: boolean;
+  };
+}
+
+export interface SceneConfig {
+  version: string;
+  id: string;
+  name: string;
+  ambience: TimeOfDayAmbience;
+  transitionDurationMs: number;
+  layers: SceneLayerConfig[];
+  anchors: RitualAnchorsConfig;
+  updatedAt: number;
+}
+
+export interface SceneAssetItem {
+  id: string;
+  name: string;
+  filename: string;
+  filepath: string;
+  targetLayer: SceneLayerId;
+  layerTarget?: SceneLayerId;
+  mediaType: 'image' | 'video';
+  fileSizeBytes: number;
+  mimeType: string;
+  width?: number;
+  height?: number;
+  url: string;
+  createdAt: number;
+}
+
+export interface ScenePresetItem {
+  id: string;
+  name: string;
+  isBuiltin: boolean;
+  config: SceneConfig;
+  thumbnailUrl?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface TempleStateSnapshot {
   startedAt: number;
   uptimeSec: number;
@@ -412,6 +525,7 @@ export interface TempleStateSnapshot {
   eventTraces?: EventTraceItem[];
   audioLeaderClientId?: string | null;
   gitCommit?: string;
+  sceneConfig?: SceneConfig;
 }
 
 export interface TtsBroadcastPayload {
@@ -436,6 +550,7 @@ export type ServerToClientWsMessage =
   | { type: 'eventTrace'; trace: EventTraceItem }
   | { type: 'eventTraceBatch'; traces: EventTraceItem[] }
   | { type: 'audioLeaderUpdate'; leaderClientId: string | null }
+  | { type: 'sceneConfigUpdate'; sceneConfig: SceneConfig }
   | { type: 'stopAudio' }
   | { type: 'clearTtsQueue' }
   | { type: 'restartAudioEngine' }
