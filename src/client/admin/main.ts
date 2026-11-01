@@ -598,6 +598,89 @@ document.querySelectorAll<HTMLButtonElement>('[data-cat-filter]').forEach((btn) 
   };
 });
 
+// Playlists Management
+const btnCreatePlaylist = document.getElementById('btnCreatePlaylist');
+const inpNewPlaylistName = document.getElementById('inpNewPlaylistName') as HTMLInputElement | null;
+const selPlaylistMode = document.getElementById('selPlaylistMode') as HTMLSelectElement | null;
+const playlistContainer = document.getElementById('playlistListContainer');
+
+async function loadPlaylists(): Promise<void> {
+  try {
+    const res = await callAdminApi('/api/admin/audio/playlists');
+    renderPlaylists(res.playlists || []);
+  } catch {
+    // ignore
+  }
+}
+
+function renderPlaylists(playlists: any[]): void {
+  if (!playlistContainer) return;
+  if (playlists.length === 0) {
+    playlistContainer.innerHTML =
+      '<div style="color:var(--muted); font-size:12px;">Chưa có playlist tùy chỉnh. Nhạc thiền ngũ cung tự động mặc định đang phát.</div>';
+    return;
+  }
+  playlistContainer.replaceChildren();
+  for (const pl of playlists) {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.justifyContent = 'space-between';
+    row.style.alignItems = 'center';
+    row.style.padding = '6px 10px';
+    row.style.borderRadius = '6px';
+    row.style.background = 'rgba(255,255,255,0.04)';
+    row.style.border = '1px solid rgba(229,184,91,0.15)';
+    row.innerHTML = `
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="color:var(--gold-bright); font-weight:600;">🎶 ${pl.name}</span>
+        <span style="font-size:11px; color:var(--muted); font-family:monospace;">[${pl.mode}]</span>
+      </div>
+      <button type="button" class="btn-del-pl" data-pl-id="${pl.id}" style="color:var(--danger); border-color:var(--danger); font-size:11px; padding:2px 6px;">🗑️ Xóa</button>
+    `;
+    playlistContainer.appendChild(row);
+  }
+  playlistContainer.querySelectorAll<HTMLButtonElement>('.btn-del-pl').forEach((btn) => {
+    btn.onclick = async () => {
+      const plId = btn.getAttribute('data-pl-id');
+      try {
+        await callAdminApi('/api/admin/audio/playlists/delete', { id: plId });
+        showToast('Đã xóa playlist thành công');
+        void loadPlaylists();
+      } catch (e: any) {
+        showToast(`Lỗi: ${e.message}`);
+      }
+    };
+  });
+}
+
+if (btnCreatePlaylist) {
+  btnCreatePlaylist.onclick = async () => {
+    const name = inpNewPlaylistName?.value.trim();
+    if (!name) {
+      showToast('Vui lòng nhập tên danh sách phát');
+      return;
+    }
+    const mode = (selPlaylistMode?.value || 'loop_all') as any;
+    try {
+      await callAdminApi('/api/admin/audio/playlists', {
+        playlist: {
+          id: `pl_${Date.now()}`,
+          name,
+          trackIds: [],
+          mode,
+          isActive: true,
+          createdAt: Date.now()
+        }
+      });
+      showToast(`Đã tạo danh sách phát: ${name}`);
+      if (inpNewPlaylistName) inpNewPlaylistName.value = '';
+      void loadPlaylists();
+    } catch (e: any) {
+      showToast(`Lỗi: ${e.message}`);
+    }
+  };
+}
+
 // 3. Audio File Upload
 const dropzone = document.getElementById('audioDropzone');
 const inpFileInput = document.getElementById('inpAudioFileInput') as HTMLInputElement | null;
@@ -1061,3 +1144,4 @@ function connectAdminWs(): void {
 
 connectAdminWs();
 void loadAudioTracks();
+void loadPlaylists();
