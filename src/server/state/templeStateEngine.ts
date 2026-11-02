@@ -766,10 +766,11 @@ export class TempleStateEngine {
     let ttsText: string | undefined;
     const shouldReadTts =
       this.settings.ttsEnabled &&
-      Boolean(rule.actionParams.readTts) &&
-      (rule.actionType !== 'DRAW_FORTUNE' || this.settings.ttsReadFortunes) &&
-      (rule.actionType !== 'RELEASE_LANTERN' || this.settings.ttsReadPrayers) &&
-      (rule.actionType !== 'BURN_INCENSE' || this.settings.ttsReadFreeComments);
+      (rule.actionType === 'DRAW_FORTUNE'
+        ? this.settings.ttsReadFortunes
+        : Boolean(rule.actionParams.readTts) &&
+          (rule.actionType !== 'RELEASE_LANTERN' || this.settings.ttsReadPrayers) &&
+          (rule.actionType !== 'BURN_INCENSE' || this.settings.ttsReadFreeComments));
 
     const traceId = (event as any).traceId;
 
@@ -1024,6 +1025,7 @@ export class TempleStateEngine {
 
   public resetSession(): void {
     this.store.createBackupSnapshot();
+    this.resetTransientState();
     this.viewers.clear();
     this.lanterns.length = 0;
     this.recentRituals.length = 0;
@@ -1172,12 +1174,14 @@ export class TempleStateEngine {
   public updateFortuneExecutionStatus(
     traceId: string,
     status: FortuneExecutionRecord['status'],
-    audioUrl?: string | null
+    audioUrl?: string | null,
+    reason?: string
   ): void {
     const item = this.recentFortuneExecutions.find((r) => r.traceId === traceId);
     if (item) {
       item.status = status;
       if (audioUrl !== undefined) item.audioUrl = audioUrl;
+      if (reason !== undefined) item.reason = reason;
       this.onFortuneExecutionUpdateCallback?.(item);
     }
   }

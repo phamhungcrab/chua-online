@@ -431,7 +431,13 @@ describe('5. HTTP & WebSocket Server Security, Auth & End-to-End Integration', (
   });
 
   it('exports and re-imports full JSON configuration bundle cleanly', async () => {
-    const exportRes = await fetch(`${baseUrl}/api/config/export`);
+    // Unauthenticated export rejected with 401
+    const unauthRes = await fetch(`${baseUrl}/api/config/export`);
+    expect(unauthRes.status).toBe(401);
+
+    const exportRes = await fetch(`${baseUrl}/api/config/export`, {
+      headers: { 'X-Admin-Token': 'secret-test-token' }
+    });
     expect(exportRes.status).toBe(200);
     const bundle = (await exportRes.json()) as {
       version: number;
@@ -673,8 +679,34 @@ describe('8. Vietnamese Lunar Calendar, Community Prayer Registry & Cultural Tog
     const testBaseUrl = `http://127.0.0.1:${testStudio.port}`;
 
     try {
-      // 1. Upload audio track via POST /api/admin/audio/upload
-      const dummyAudio = Buffer.alloc(1024, 0x41);
+      // 0. Verify rejection of fake/corrupt non-audio file
+      const fakeAudio = Buffer.alloc(512, 0x41);
+      const fakeUploadRes = await fetch(`${testBaseUrl}/api/admin/audio/upload`, {
+        method: 'POST',
+        headers: {
+          'X-Admin-Token': 'test-audio-token',
+          'X-File-Name': 'fake.wav'
+        },
+        body: fakeAudio
+      });
+      expect(fakeUploadRes.status).toBe(400);
+
+      // 1. Upload valid WAV audio track with proper RIFF/WAVE header
+      const dummyAudio = Buffer.alloc(1024);
+      dummyAudio.write('RIFF', 0, 4, 'ascii');
+      dummyAudio.writeUInt32LE(1024 - 8, 4);
+      dummyAudio.write('WAVE', 8, 4, 'ascii');
+      dummyAudio.write('fmt ', 12, 4, 'ascii');
+      dummyAudio.writeUInt32LE(16, 16);
+      dummyAudio.writeUInt16LE(1, 20);
+      dummyAudio.writeUInt16LE(1, 22);
+      dummyAudio.writeUInt32LE(44100, 24);
+      dummyAudio.writeUInt32LE(44100 * 2, 28);
+      dummyAudio.writeUInt16LE(2, 32);
+      dummyAudio.writeUInt16LE(16, 34);
+      dummyAudio.write('data', 36, 4, 'ascii');
+      dummyAudio.writeUInt32LE(1024 - 44, 40);
+
       const uploadRes = await fetch(`${testBaseUrl}/api/admin/audio/upload`, {
         method: 'POST',
         headers: {

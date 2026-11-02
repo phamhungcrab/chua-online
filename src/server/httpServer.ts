@@ -27,9 +27,20 @@ import { SqlitePersistenceStore } from './persistence/sqliteStore.ts';
 import { normalizeRawTikTokEvent } from './router/eventNormalizer.ts';
 import { OfflineEventSimulator } from './simulator/offlineSimulator.ts';
 import { TempleStateEngine } from './state/templeStateEngine.ts';
+import { validateAndInspectAudioBuffer } from './utils/audioValidator.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
+
+let APP_VERSION = '1.0.2';
+try {
+  const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
+  if (pkg.version) APP_VERSION = pkg.version;
+} catch {
+  // fallback
+}
+
+const failedLoginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -367,7 +378,37 @@ export async function createStudioServer(options?: {
       return;
     }
 
-    // 1. Public Read-Only Health & State Endpoints
+    function extractAdminToken(incomingReq: http.IncomingMessage, urlObj?: URL): string {
+      const headerToken = incomingReq.headers['x-admin-token'];
+      if (typeof headerToken === 'string' && headerToken) return headerToken.trim();
+
+      const authHeader = incomingReq.headers['authorization'];
+      if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+        return authHeader.slice(7).trim();
+      }
+
+      const cookieHeader = incomingReq.headers['cookie'];
+      if (cookieHeader) {
+        const match = cookieHeader.match(/(?:^|;\s*)temple_admin_session=([^;]+)/);
+        if (match && match[1]) {
+          return decodeURIComponent(match[1]).trim();
+        }
+      }
+
+      if (urlObj) {
+        const qToken = urlObj.searchParams.get('token');
+        if (qToken) return qToken.trim();
+      }
+
+      return '';
+    }
+
+    function checkIsAdminAuthenticated(incomingReq: http.IncomingMessage, urlObj?: URL): boolean {
+      const token = extractAdminToken(incomingReq, urlObj);
+      return Boolean(token && token === adminToken);
+    }
+
+    // 1. Public Read-Only Health & Auth Endpoints
     if (req.method === 'GET' && pathname === '/api/health') {
       const snap = getFullSnapshot();
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -385,6 +426,154 @@ export async function createStudioServer(options?: {
       return;
     }
 
+    if (req.method === 'GET' && pathname === '/api/auth/status') {
+      const isAuthed = checkIsAdminAuthenticated(req, parsedUrl);
+      const authHash = store.getKv<string>('admin_auth_hash', '');
+      const isFirstRun = !store.getKv<boolean>('first_run_completed', false);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          authenticated: isAuthed,
+          hasPassword: Boolean(authHash),
+          isFirstRun
+        })
+      );
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/auth/login') {
+      const clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1');
+      const now = Date.now();
+      const attemptRecord = failedLoginAttempts.get(clientIp);
+
+      if (attemptRecord && attemptRecord.lockedUntil > now) {
+        const remainingSec = Math.ceil((attemptRecord.lockedUntil - now) / 1000);
+        res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: `Quá nhiều lần đăng nhập sai. Vui lòng chờ ${remainingSec} giây trước khi thử lại.`
+          })
+        );
+        return;
+      }
+
+      let body: Record<string, any> = {};
+      try {
+        body = await readJsonBody(req, 64 * 1024);
+      } catch {
+        body = {};
+      }
+
+      const inputPassword = String(body.password || '').trim();
+      const authHash = store.getKv<string>('admin_auth_hash', '');
+      const authSalt = store.getKv<string>('admin_auth_salt', '');
+
+      if (!authHash) {
+        failedLoginAttempts.delete(clientIp);
+        res.setHeader(
+          'Set-Cookie',
+          `temple_admin_session=${encodeURIComponent(adminToken)}; Path=/; HttpOnly; SameSite=Strict`
+        );
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, token: adminToken, needsSetup: true }));
+        return;
+      }
+
+      const calculatedHash = crypto
+        .pbkdf2Sync(inputPassword, authSalt || '', 10000, 32, 'sha256')
+        .toString('hex');
+
+      if (calculatedHash === authHash) {
+        failedLoginAttempts.delete(clientIp);
+        res.setHeader(
+          'Set-Cookie',
+          `temple_admin_session=${encodeURIComponent(adminToken)}; Path=/; HttpOnly; SameSite=Strict`
+        );
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, token: adminToken }));
+      } else {
+        const current = attemptRecord || { count: 0, lockedUntil: 0 };
+        current.count += 1;
+        if (current.count >= 5) {
+          current.lockedUntil = now + 5 * 60 * 1000;
+        }
+        failedLoginAttempts.set(clientIp, current);
+        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error:
+              current.count >= 5
+                ? 'Bạn đã nhập sai mật khẩu 5 lần. Tạm khóa trong 5 phút.'
+                : `Mật khẩu quản trị không đúng (lần ${current.count}/5).`
+          })
+        );
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/auth/setup') {
+      const isAuthed = checkIsAdminAuthenticated(req, parsedUrl);
+      const existingHash = store.getKv<string>('admin_auth_hash', '');
+
+      if (existingHash && !isAuthed) {
+        res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Mật khẩu đã được thiết lập. Vui lòng đăng nhập.' }));
+        return;
+      }
+
+      let body: Record<string, any> = {};
+      try {
+        body = await readJsonBody(req, 64 * 1024);
+      } catch {
+        body = {};
+      }
+
+      const password = String(body.password || '').trim();
+      if (password.length < 4) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Mật khẩu phải có ít nhất 4 ký tự.' }));
+        return;
+      }
+
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = crypto.pbkdf2Sync(password, salt, 10000, 32, 'sha256').toString('hex');
+      store.setKv('admin_auth_salt', salt);
+      store.setKv('admin_auth_hash', hash);
+      store.setKv('first_run_completed', true);
+
+      const updatedSettings: Record<string, any> = {};
+      if (body.tiktokUsername) {
+        updatedSettings.tiktokUniqueId = String(body.tiktokUsername).trim().replace(/^@/, '');
+      }
+      if (body.voice) {
+        updatedSettings.fortuneVoice = String(body.voice).trim();
+      }
+      if (Object.keys(updatedSettings).length > 0) {
+        engine.updateSettings(updatedSettings as any);
+      }
+
+      res.setHeader(
+        'Set-Cookie',
+        `temple_admin_session=${encodeURIComponent(adminToken)}; Path=/; HttpOnly; SameSite=Strict`
+      );
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, token: adminToken }));
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/auth/logout') {
+      res.setHeader(
+        'Set-Cookie',
+        'temple_admin_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict'
+      );
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, message: 'Đã đăng xuất thành công.' }));
+      return;
+    }
+
     if (req.method === 'GET' && pathname === '/api/state') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: true, snapshot: getFullSnapshot() }));
@@ -392,6 +581,11 @@ export async function createStudioServer(options?: {
     }
 
     if (req.method === 'GET' && pathname === '/api/config/export') {
+      if (!checkIsAdminAuthenticated(req, parsedUrl)) {
+        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized: Vui lòng đăng nhập trước khi tải cấu hình.' }));
+        return;
+      }
       const snap = getFullSnapshot();
       res.writeHead(200, {
         'Content-Type': 'application/json; charset=utf-8',
@@ -413,6 +607,11 @@ export async function createStudioServer(options?: {
     }
 
     if (req.method === 'GET' && (pathname === '/api/admin/diagnostics/export' || pathname === '/api/diagnostics/export')) {
+      if (!checkIsAdminAuthenticated(req, parsedUrl)) {
+        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized: Vui lòng đăng nhập trước khi tải chẩn đoán.' }));
+        return;
+      }
       const snap = getFullSnapshot();
       res.writeHead(200, {
         'Content-Type': 'application/json; charset=utf-8',
@@ -421,7 +620,7 @@ export async function createStudioServer(options?: {
       res.end(
         JSON.stringify(
           {
-            version: '1.0.0',
+            version: APP_VERSION,
             exportedAt: new Date().toISOString(),
             gitCommit: gitCommitShort,
             system: {
@@ -444,9 +643,9 @@ export async function createStudioServer(options?: {
       );
       return;
     }
+
     if (pathname === '/api/admin/audio/upload' && req.method === 'POST') {
-      const headerToken = String(req.headers['x-admin-token'] || '');
-      if (headerToken !== adminToken) {
+      if (!checkIsAdminAuthenticated(req, parsedUrl)) {
         res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: 'Unauthorized: thiếu hoặc sai X-Admin-Token' }));
         return;
@@ -466,12 +665,12 @@ export async function createStudioServer(options?: {
         const contentType = String(req.headers['content-type'] || 'audio/mpeg');
 
         const originalName = fileNameHeader || 'audio_track.mp3';
-        const ext = path.extname(originalName).toLowerCase() || '.mp3';
-        const safeExts = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac'];
-        if (!safeExts.includes(ext)) {
-          throw new Error(`Định dạng tệp ${ext} không được hỗ trợ. Vui lòng tải MP3, WAV, OGG, hoặc M4A.`);
+        const inspection = validateAndInspectAudioBuffer(rawBuffer, originalName);
+        if (!inspection.valid) {
+          throw new Error(inspection.error || 'Tệp âm thanh không hợp lệ');
         }
 
+        const ext = inspection.ext;
         const fileId = `track_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
         const diskFileName = `${fileId}${ext}`;
         const diskFilePath = path.join(audioUploadsDir, diskFileName);
@@ -480,13 +679,13 @@ export async function createStudioServer(options?: {
 
         const trackItem: AudioTrackItem = {
           id: fileId,
-          name: nameHeader || originalName.replace(ext, ''),
+          name: nameHeader || originalName.replace(path.extname(originalName), ''),
           filename: diskFileName,
           filepath: diskFilePath,
           category: categoryHeader,
-          durationSec: 0,
+          durationSec: inspection.durationSec,
           fileSizeBytes: rawBuffer.length,
-          mimeType: contentType,
+          mimeType: inspection.mimeType || contentType,
           isDefaultFor: null,
           createdAt: Date.now(),
           url: `/audio-uploads/${encodeURIComponent(diskFileName)}`
@@ -504,8 +703,7 @@ export async function createStudioServer(options?: {
     }
 
     if (pathname === '/api/admin/scene/upload' && req.method === 'POST') {
-      const headerToken = String(req.headers['x-admin-token'] || '');
-      if (headerToken !== adminToken) {
+      if (!checkIsAdminAuthenticated(req, parsedUrl)) {
         res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: 'Unauthorized: thiếu hoặc sai X-Admin-Token' }));
         return;
@@ -569,8 +767,7 @@ export async function createStudioServer(options?: {
 
     // 3. Protected Admin Endpoints (JSON)
     if (pathname.startsWith('/api/admin/')) {
-      const headerToken = String(req.headers['x-admin-token'] || '');
-      if (headerToken !== adminToken) {
+      if (!checkIsAdminAuthenticated(req, parsedUrl)) {
         res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: 'Unauthorized: thiếu hoặc sai X-Admin-Token' }));
         return;
@@ -697,7 +894,7 @@ export async function createStudioServer(options?: {
       routePath = '/admin.html';
     }
 
-    // Serve /admin.html with injected local session admin token meta tag so local admin UI works out of the box
+    // Serve /admin.html (only inject active admin token if already authenticated via session cookie or header)
     if (routePath === '/admin.html') {
       const adminHtmlPath =
         safeResolveFileWithinRoot(clientDistDir, 'admin.html') ||
@@ -706,9 +903,10 @@ export async function createStudioServer(options?: {
         res.writeHead(404).end('admin.html not found (run npm run build first)');
         return;
       }
+      const isAuthed = checkIsAdminAuthenticated(req, parsedUrl);
       const html = fs
         .readFileSync(adminHtmlPath, 'utf8')
-        .replace('__TEMPLE_ADMIN_TOKEN__', adminToken);
+        .replace('__TEMPLE_ADMIN_TOKEN__', isAuthed ? adminToken : '');
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store'
@@ -789,8 +987,17 @@ export async function createStudioServer(options?: {
         }
 
         if (msg.type === 'tracePlaybackEnd' && msg.traceId) {
-          engine.getEventDebugger().markCompleted(msg.traceId);
-          engine.updateFortuneExecutionStatus(msg.traceId, 'COMPLETED');
+          const status = msg.status || 'COMPLETED';
+          if (status === 'COMPLETED') {
+            engine.getEventDebugger().markCompleted(msg.traceId);
+            engine.updateFortuneExecutionStatus(msg.traceId, 'COMPLETED');
+          } else if (status === 'FAILED') {
+            engine.getEventDebugger().markFailed(msg.traceId, msg.reason || 'Lỗi phát âm thanh');
+            engine.updateFortuneExecutionStatus(msg.traceId, 'FAILED', null, msg.reason);
+          } else if (status === 'CANCELLED') {
+            engine.getEventDebugger().markCancelled(msg.traceId, msg.reason || 'Đã hủy phát');
+            engine.updateFortuneExecutionStatus(msg.traceId, 'SKIPPED', null, msg.reason);
+          }
           return;
         }
 
@@ -998,11 +1205,6 @@ async function handleAdminAction(
       return { ritual, snapshot: ctx.getFullSnapshot() };
     }
 
-    case '/api/admin/session/reset': {
-      ctx.engine.resetSession();
-      return { snapshot: ctx.getFullSnapshot() };
-    }
-
     case '/api/admin/tiktok/connect': {
       const uniqueId = String(body.uniqueId || '').trim();
       const status = await ctx.connector.connect(uniqueId);
@@ -1073,8 +1275,9 @@ async function handleAdminAction(
       return { audioUrl, text };
     }
 
+    case '/api/admin/session/reset':
     case '/api/admin/system/reset': {
-      const scope = String(body.scope || 'session');
+      const scope = pathname === '/api/admin/session/reset' ? 'session' : String(body.scope || 'session');
       const confirmation = String(body.confirmation || body.confirmToken || '').trim();
       if (confirmation !== 'RESET') {
         throw new Error('Từ khóa xác nhận không đúng. Vui lòng nhập chính xác "RESET" (viết hoa toàn bộ).');
@@ -1082,7 +1285,8 @@ async function handleAdminAction(
 
       if (scope === 'session') {
         const backupPath = ctx.store.createBackupSnapshot();
-        ctx.engine.resetTransientState();
+        ctx.engine.resetSession();
+        ctx.tts.clearQueue();
         ctx.broadcastWs({ type: 'stopAudio' });
         ctx.broadcastWs({ type: 'clearTtsQueue' });
         ctx.broadcastWs({ type: 'sessionReset', timestamp: Date.now() });
@@ -1368,6 +1572,10 @@ function serveAudioStream(
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=86400'
       });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
       fs.createReadStream(filePath, { start, end }).pipe(res);
     } else {
       res.writeHead(200, {
@@ -1376,6 +1584,10 @@ function serveAudioStream(
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=86400'
       });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
       fs.createReadStream(filePath).pipe(res);
     }
   } catch {

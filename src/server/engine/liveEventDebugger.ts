@@ -132,6 +132,18 @@ export class LiveEventDebugger {
     });
   }
 
+  public markFailed(traceIdOrEventId: string, reason?: string): EventTraceItem | null {
+    return this.updateStage(traceIdOrEventId, 'FAILED', {
+      reason: reason || 'Phát âm thanh thất bại'
+    });
+  }
+
+  public markCancelled(traceIdOrEventId: string, reason?: string): EventTraceItem | null {
+    return this.updateStage(traceIdOrEventId, 'CANCELLED', {
+      reason: reason || 'Đã hủy phát âm thanh'
+    });
+  }
+
   public getRecentTraces(limit = 50): EventTraceItem[] {
     return this.traces.slice(0, limit);
   }

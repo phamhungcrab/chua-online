@@ -379,6 +379,8 @@ export type TraceStage =
   | 'SYNTHESIZED'
   | 'PLAYING'
   | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED'
   | 'DROPPED';
 
 export interface EventTraceItem {

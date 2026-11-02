@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium, type Browser } from 'playwright-core';
+import { SqlitePersistenceStore } from '../persistence/sqliteStore.ts';
 
 function findLocalBrowserExecutable(): string {
   const candidates = [
@@ -43,9 +44,25 @@ async function runE2eQa(): Promise<void> {
   const overlayErrors: string[] = [];
 
   try {
+    const dataDir = path.resolve(process.cwd(), 'data');
+    const store = new SqlitePersistenceStore(dataDir);
+    const token = store.getKv<string>('admin_persistent_token') || process.env.TEMPLE_ADMIN_TOKEN || '';
+    store.close();
+
     const context = await browser.newContext({
       viewport: { width: 1440, height: 900 }
     });
+
+    if (token) {
+      await context.addCookies([
+        {
+          name: 'temple_admin_session',
+          value: token,
+          domain: '127.0.0.1',
+          path: '/'
+        }
+      ]);
+    }
 
     // ==========================================
     // 1. ADMIN STUDIO TESTS
@@ -113,10 +130,11 @@ async function runE2eQa(): Promise<void> {
 
     // Step 4: Test Audio File Upload
     const tempAudioFile = path.join(os.tmpdir(), 'tieng_chuong_test.mp3');
-    const dummyMp3 = Buffer.from([
-      0xff, 0xfb, 0x90, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x54, 0x41, 0x47, 0x54, 0x65, 0x73, 0x74, 0x20, 0x41, 0x75, 0x64, 0x69, 0x6f
-    ]);
+    const dummyMp3 = Buffer.alloc(1024);
+    dummyMp3[0] = 0xff;
+    dummyMp3[1] = 0xfb;
+    dummyMp3[2] = 0x90;
+    dummyMp3[3] = 0x64;
     fs.writeFileSync(tempAudioFile, dummyMp3);
 
     await adminPage.click('.audio-tab-btn[data-tab="tabSoundLibrary"]');

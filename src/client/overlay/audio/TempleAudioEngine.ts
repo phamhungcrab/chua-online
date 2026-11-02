@@ -65,13 +65,22 @@ export class TempleAudioEngine {
   private readonly ttsQueue: TtsBroadcastPayload[] = [];
   private ttsPlaying = false;
   private isAudioLeader = false;
+  private playbackGenerationId = 0;
   private currentAudio: HTMLAudioElement | null = null;
-  private activeAudioResolve: (() => void) | null = null;
+  private activeAudioResolve: ((result: { status: 'COMPLETED' | 'FAILED' | 'CANCELLED'; reason?: string }) => void) | null = null;
   private activeAudioTimeout: ReturnType<typeof setTimeout> | null = null;
   public onPlaybackStarted?: (traceId?: string) => void;
   public onPlaybackFinished?: (traceId?: string) => void;
+  public onPlaybackStatus?: (
+    traceId: string | undefined,
+    status: 'COMPLETED' | 'FAILED' | 'CANCELLED',
+    reason?: string
+  ) => void;
 
   public setAudioLeader(isLeader: boolean): void {
+    if (this.isAudioLeader !== isLeader) {
+      this.playbackGenerationId++;
+    }
     this.isAudioLeader = isLeader;
     if (!isLeader) {
       this.clearTtsQueue();
@@ -83,6 +92,7 @@ export class TempleAudioEngine {
   }
 
   public stopCurrentAudio(): void {
+    this.playbackGenerationId++;
     if (this.activeAudioTimeout) {
       clearTimeout(this.activeAudioTimeout);
       this.activeAudioTimeout = null;
@@ -99,13 +109,14 @@ export class TempleAudioEngine {
     if (this.activeAudioResolve) {
       const resolve = this.activeAudioResolve;
       this.activeAudioResolve = null;
-      resolve();
+      resolve({ status: 'CANCELLED', reason: 'Âm thanh đã bị dừng chủ động' });
     }
     this.ttsPlaying = false;
     this.setDucking(false);
   }
 
   public clearTtsQueue(): void {
+    this.playbackGenerationId++;
     this.ttsQueue.length = 0;
     this.stopCurrentAudio();
   }
@@ -461,21 +472,40 @@ export class TempleAudioEngine {
     if (this.ttsPlaying || this.ttsQueue.length === 0 || this.isMuted || !this.isAudioLeader) return;
     this.ttsPlaying = true;
     this.setDucking(true);
+    const currentGen = this.playbackGenerationId;
 
     try {
-      while (this.ttsQueue.length > 0 && !this.isMuted && this.isAudioLeader) {
+      while (
+        this.ttsQueue.length > 0 &&
+        !this.isMuted &&
+        this.isAudioLeader &&
+        this.playbackGenerationId === currentGen
+      ) {
         const next = this.ttsQueue.shift()!;
         this.onPlaybackStarted?.(next.traceId);
 
+        let statusResult: { status: 'COMPLETED' | 'FAILED' | 'CANCELLED'; reason?: string } = {
+          status: 'COMPLETED'
+        };
+
         if (next.audioUrl) {
-          await this.playAudioUrl(next.audioUrl);
+          statusResult = await this.playAudioUrl(next.audioUrl);
         } else {
           // Zero English speech fallback: play gentle sacred singing bowl chime
           this.playIncenseChime();
           await new Promise((r) => setTimeout(r, 1200));
         }
 
-        this.onPlaybackFinished?.(next.traceId);
+        if (this.playbackGenerationId !== currentGen) {
+          this.onPlaybackStatus?.(next.traceId, 'CANCELLED', 'Hàng đợi âm thanh đã bị hủy');
+          break;
+        }
+
+        if (statusResult.status === 'COMPLETED') {
+          this.onPlaybackFinished?.(next.traceId);
+        } else {
+          this.onPlaybackStatus?.(next.traceId, statusResult.status, statusResult.reason);
+        }
       }
     } finally {
       this.ttsPlaying = false;
@@ -483,8 +513,10 @@ export class TempleAudioEngine {
     }
   }
 
-  private playAudioUrl(url: string): Promise<void> {
-    if (this.isMuted || !this.isAudioLeader) return Promise.resolve();
+  private playAudioUrl(url: string): Promise<{ status: 'COMPLETED' | 'FAILED' | 'CANCELLED'; reason?: string }> {
+    if (this.isMuted || !this.isAudioLeader) {
+      return Promise.resolve({ status: 'CANCELLED', reason: 'Không phải audio leader hoặc đang tắt tiếng' });
+    }
     return new Promise((resolve) => {
       try {
         const audio = new Audio(url);
@@ -497,7 +529,7 @@ export class TempleAudioEngine {
         );
         audio.volume = effectiveVol;
 
-        const cleanup = () => {
+        const finish = (status: 'COMPLETED' | 'FAILED' | 'CANCELLED', reason?: string) => {
           if (this.activeAudioTimeout) {
             clearTimeout(this.activeAudioTimeout);
             this.activeAudioTimeout = null;
@@ -508,29 +540,38 @@ export class TempleAudioEngine {
           if (this.activeAudioResolve === resolve) {
             this.activeAudioResolve = null;
           }
+          audio.onended = null;
+          audio.onerror = null;
+          resolve({ status, reason });
         };
 
         this.activeAudioTimeout = setTimeout(() => {
-          cleanup();
-          resolve();
+          try {
+            audio.pause();
+            audio.currentTime = 0;
+          } catch {
+            // ignore
+          }
+          finish('FAILED', 'Quá thời gian phát âm thanh (20s timeout)');
         }, 20000);
 
         audio.onended = () => {
-          cleanup();
-          resolve();
+          finish('COMPLETED');
         };
         audio.onerror = () => {
-          cleanup();
-          resolve();
+          finish('FAILED', 'Lỗi tải hoặc giải mã tệp âm thanh');
         };
-        audio.play().catch(() => {
-          cleanup();
-          resolve();
+        audio.play().catch((err: any) => {
+          if (err?.name === 'AbortError') {
+            finish('CANCELLED', 'Âm thanh đã bị hủy bởi thao tác dừng');
+          } else {
+            finish('FAILED', `Không thể phát âm thanh: ${err?.message || err}`);
+          }
         });
-      } catch {
+      } catch (err: any) {
         this.currentAudio = null;
         this.activeAudioResolve = null;
-        resolve();
+        resolve({ status: 'FAILED', reason: String(err?.message || err) });
       }
     });
   }

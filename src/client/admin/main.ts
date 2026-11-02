@@ -17,9 +17,22 @@ import type {
   TempleSettings,
   TempleStateSnapshot
 } from '../../shared/types.ts';
+import { escapeHtml } from '../../shared/escapeHtml.ts';
 
 const tokenMeta = document.querySelector('meta[name="temple-admin-token"]');
-const adminToken = tokenMeta?.getAttribute('content') || '';
+let currentAdminToken =
+  sessionStorage.getItem('temple_admin_token') ||
+  tokenMeta?.getAttribute('content') ||
+  '';
+
+export function setAdminToken(tok: string): void {
+  currentAdminToken = tok;
+  if (tok) {
+    sessionStorage.setItem('temple_admin_token', tok);
+  } else {
+    sessionStorage.removeItem('temple_admin_token');
+  }
+}
 
 const toastEl = document.getElementById('toastBar')!;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -30,15 +43,46 @@ function showToast(msg: string): void {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
 }
 
+const modalAdminLogin = document.getElementById('modalAdminLogin');
+const inputAdminLoginPassword = document.getElementById('inputAdminLoginPassword') as HTMLInputElement | null;
+const btnAdminLoginSubmit = document.getElementById('btnAdminLoginSubmit') as HTMLButtonElement | null;
+const loginAlertBox = document.getElementById('loginAlertBox');
+const btnLogoutAdmin = document.getElementById('btnLogoutAdmin');
+
+function openLoginModal(msg?: string): void {
+  if (!modalAdminLogin) return;
+  if (loginAlertBox) {
+    if (msg) {
+      loginAlertBox.textContent = msg;
+      loginAlertBox.style.display = 'block';
+    } else {
+      loginAlertBox.style.display = 'none';
+    }
+  }
+  if (inputAdminLoginPassword) {
+    inputAdminLoginPassword.value = '';
+  }
+  modalAdminLogin.style.display = 'flex';
+  setTimeout(() => inputAdminLoginPassword?.focus(), 100);
+}
+
+function closeLoginModal(): void {
+  if (modalAdminLogin) modalAdminLogin.style.display = 'none';
+}
+
 async function callAdminApi(endpoint: string, payload: Record<string, any> = {}): Promise<any> {
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Admin-Token': adminToken
+      'X-Admin-Token': currentAdminToken
     },
     body: JSON.stringify(payload)
   });
+  if (res.status === 401) {
+    openLoginModal('Phiên làm việc đã hết hạn hoặc chưa xác thực. Vui lòng đăng nhập lại.');
+    throw new Error('Unauthorized: Vui lòng đăng nhập lại.');
+  }
   const data = await res.json();
   if (!res.ok || !data.ok) {
     throw new Error(data.error || `HTTP ${res.status}`);
@@ -333,7 +377,7 @@ function renderSnapshot(snap: TempleStateSnapshot, forceFormUpdate = false): voi
       row.style.borderBottom = '1px solid rgba(229,184,91,0.15)';
       row.style.paddingBottom = '4px';
       const timeStr = new Date(p.createdAt).toLocaleTimeString('vi-VN');
-      row.innerHTML = `<span style="color:var(--gold-bright); font-weight:600;">[${p.category}]</span> <b style="color:var(--text);">${p.nickname}</b> <span style="color:var(--muted); font-size:11px;">(${timeStr})</span>: <span style="font-style:italic;">"${p.wishText}"</span>`;
+      row.innerHTML = `<span style="color:var(--gold-bright); font-weight:600;">[${escapeHtml(p.category)}]</span> <b style="color:var(--text);">${escapeHtml(p.nickname)}</b> <span style="color:var(--muted); font-size:11px;">(${escapeHtml(timeStr)})</span>: <span style="font-style:italic;">"${escapeHtml(p.wishText)}"</span>`;
       livePrayerRegistry.appendChild(row);
     }
   } else {
@@ -650,22 +694,22 @@ function renderAudioTracks(tracks: any[]): void {
     card.innerHTML = `
       <div class="audio-track-info" style="flex:1;">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span class="audio-category-pill">${catDisplay}</span>
-          <span class="audio-track-title">${tr.name}</span>
+          <span class="audio-category-pill">${escapeHtml(catDisplay)}</span>
+          <span class="audio-track-title">${escapeHtml(tr.name)}</span>
           ${isSmallSample ? '<span title="Tệp rất nhỏ (<1KB) - Có thể là tệp mẫu hoặc thử nghiệm" style="color:#f59e0b; font-size:11px; font-weight:600;">⚠️ Tệp mẫu nhỏ</span>' : ''}
         </div>
         <div class="audio-track-meta">
-          <span>📁 ${tr.filename}</span>
-          <span>⚖️ ${sizeStr}</span>
-          <span id="dur_${tr.id}">⏱️ --:--</span>
-          <span>📅 ${dateStr}</span>
+          <span>📁 ${escapeHtml(tr.filename)}</span>
+          <span>⚖️ ${escapeHtml(sizeStr)}</span>
+          <span id="dur_${escapeHtml(tr.id)}">⏱️ ${tr.durationSec > 0 ? `${Math.floor(tr.durationSec / 60)}:${Math.floor(tr.durationSec % 60).toString().padStart(2, '0')}` : '--:--'}</span>
+          <span>📅 ${escapeHtml(dateStr)}</span>
         </div>
-        <audio controls src="${tr.url}" preload="metadata" style="width:100%; height:32px; margin-top:4px;"></audio>
+        <audio controls src="${escapeHtml(tr.url)}" preload="metadata" style="width:100%; height:32px; margin-top:4px;"></audio>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end; min-width:210px;">
         <div style="display:flex; align-items:center; gap:6px; width:100%; justify-content:flex-end;">
           <span style="font-size:11px; color:var(--muted);">Mục:</span>
-          <select class="sel-track-category" data-track-id="${tr.id}" style="font-size:12px; padding:3px 6px; border-radius:4px; background:rgba(0,0,0,0.4); color:var(--text); border:1px solid rgba(229,184,91,0.25);">
+          <select class="sel-track-category" data-track-id="${escapeHtml(tr.id)}" style="font-size:12px; padding:3px 6px; border-radius:4px; background:rgba(0,0,0,0.4); color:var(--text); border:1px solid rgba(229,184,91,0.25);">
             <option value="meditation" ${tr.category === 'meditation' ? 'selected' : ''}>Nhạc Thiền (BGM)</option>
             <option value="chant" ${tr.category === 'chant' ? 'selected' : ''}>Tụng Kinh</option>
             <option value="buddha_name" ${tr.category === 'buddha_name' ? 'selected' : ''}>Niệm Phật</option>
@@ -677,14 +721,14 @@ function renderAudioTracks(tracks: any[]): void {
             <option value="sfx" ${tr.category === 'sfx' ? 'selected' : ''}>Hiệu Ứng</option>
           </select>
         </div>
-        <select class="sel-track-default" data-track-id="${tr.id}" style="font-size:12px; padding:4px 6px; width:100%;">
+        <select class="sel-track-default" data-track-id="${escapeHtml(tr.id)}" style="font-size:12px; padding:4px 6px; width:100%;">
           <option value="" ${!tr.isDefaultFor ? 'selected' : ''}>-- Không gán mặc định --</option>
           <option value="bgm" ${tr.isDefaultFor === 'bgm' ? 'selected' : ''}>🎵 Làm Nhạc Nền (BGM)</option>
           <option value="bell" ${tr.isDefaultFor === 'bell' ? 'selected' : ''}>🔔 Tiếng Chuông Lớn</option>
           <option value="wooden_fish" ${tr.isDefaultFor === 'wooden_fish' ? 'selected' : ''}>🪵 Tiếng Mõ Gỗ</option>
           <option value="ceremony" ${tr.isDefaultFor === 'ceremony' ? 'selected' : ''}>🪷 Nghi Lễ & Hoa Đăng</option>
         </select>
-        <button type="button" class="btn-delete-track" data-track-id="${tr.id}" style="color:var(--danger); border-color:var(--danger); font-size:11px; padding:3px 8px;">🗑️ Xóa tệp</button>
+        <button type="button" class="btn-delete-track" data-track-id="${escapeHtml(tr.id)}" style="color:var(--danger); border-color:var(--danger); font-size:11px; padding:3px 8px;">🗑️ Xóa tệp</button>
       </div>
     `;
 
@@ -901,7 +945,7 @@ if (btnSubmitUpload) {
       const res = await fetch('/api/admin/audio/upload', {
         method: 'POST',
         headers: {
-          'X-Admin-Token': adminToken,
+          'X-Admin-Token': currentAdminToken,
           'X-Audio-Name': encodeURIComponent((inpUploadName?.value || selectedUploadFile.name).trim()),
           'X-Audio-Category': selUploadCat?.value || 'meditation',
           'X-File-Name': encodeURIComponent(selectedUploadFile.name),
@@ -909,6 +953,10 @@ if (btnSubmitUpload) {
         },
         body: selectedUploadFile
       });
+      if (res.status === 401) {
+        openLoginModal('Vui lòng đăng nhập lại để tải lên tệp âm thanh.');
+        throw new Error('Chưa xác thực Admin');
+      }
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || 'Lỗi tải lên');
 
@@ -1164,7 +1212,7 @@ if (btnResetSession) {
 }
 
 document.getElementById('btnExportConfig')!.onclick = () => {
-  window.open('/api/config/export', '_blank');
+  window.open(`/api/config/export?token=${encodeURIComponent(currentAdminToken)}`, '_blank');
 };
 
 if (btnVerifyTikTok) {
@@ -1265,7 +1313,7 @@ function filterLogs(): void {
 function connectAdminWs(): void {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(
-    `${proto}//${window.location.host}/ws?role=admin&token=${encodeURIComponent(adminToken)}`
+    `${proto}//${window.location.host}/ws?role=admin&token=${encodeURIComponent(currentAdminToken)}`
   );
   ws.onmessage = (ev) => {
     try {
@@ -1280,16 +1328,16 @@ function connectAdminWs(): void {
             : r.actionType === 'STRIKE_WOODEN_FISH'
               ? 'heart'
               : 'comment';
-        const badge = r.giftName ? `🎁 [${r.giftName}]` : `✦ [${r.ruleName}]`;
-        appendLiveLog(cat, badge, `<b>${r.user.nickname}</b>: ${r.wishText || ''} (+${r.meritAwarded} Tinh Tấn)`);
+        const badge = r.giftName ? `🎁 [${escapeHtml(r.giftName)}]` : `✦ [${escapeHtml(r.ruleName)}]`;
+        appendLiveLog(cat, badge, `<b>${escapeHtml(r.user.nickname)}</b>: ${escapeHtml(r.wishText || '')} (+${r.meritAwarded} Tinh Tấn)`);
       } else if (msg.type === 'prayer') {
         const p = msg.prayer;
-        appendLiveLog('comment', `📜 [Sổ Nguyện: ${p.category}]`, `<b>${p.nickname}</b>: “${p.wishText}”`);
+        appendLiveLog('comment', `📜 [Sổ Nguyện: ${escapeHtml(p.category)}]`, `<b>${escapeHtml(p.nickname)}</b>: “${escapeHtml(p.wishText)}”`);
         const row = document.createElement('div');
         row.style.borderBottom = '1px solid rgba(229,184,91,0.15)';
         row.style.paddingBottom = '4px';
         const timeStr = new Date(p.createdAt).toLocaleTimeString('vi-VN');
-        row.innerHTML = `<span style="color:var(--gold-bright); font-weight:600;">[${p.category}]</span> <b style="color:var(--text);">${p.nickname}</b> <span style="color:var(--muted); font-size:11px;">(${timeStr})</span>: <span style="font-style:italic;">"${p.wishText}"</span>`;
+        row.innerHTML = `<span style="color:var(--gold-bright); font-weight:600;">[${escapeHtml(p.category)}]</span> <b style="color:var(--text);">${escapeHtml(p.nickname)}</b> <span style="color:var(--muted); font-size:11px;">(${escapeHtml(timeStr)})</span>: <span style="font-style:italic;">"${escapeHtml(p.wishText)}"</span>`;
         livePrayerRegistry.prepend(row);
       } else if (msg.type === 'likeBatch') {
         appendLiveLog('heart', '❤️ [Thả Tim]', `Nhận batch <b>${msg.count}</b> tim -> Gõ Mõ`);
@@ -1341,31 +1389,35 @@ function upsertDebuggerRow(trace: EventTraceItem): void {
     SYNTHESIZED: { bg: 'rgba(159,122,234,0.2)', color: '#b794f4', label: '🎙️ Đã tạo Audio' },
     PLAYING: { bg: 'rgba(229,184,91,0.25)', color: 'var(--gold-bright)', label: '🔊 Đang phát' },
     COMPLETED: { bg: 'rgba(72,187,120,0.2)', color: 'var(--jade)', label: '✅ Hoàn thành' },
+    FAILED: { bg: 'rgba(229,62,62,0.25)', color: 'var(--danger)', label: '❌ Lỗi âm thanh' },
+    CANCELLED: { bg: 'rgba(128,128,128,0.25)', color: '#aaa', label: '⏹️ Đã hủy' },
     DROPPED: { bg: 'rgba(229,62,62,0.25)', color: 'var(--danger)', label: '🚫 Chặn / Bỏ' }
   };
   const b = stageBadgeStyle[trace.stage] || { bg: 'rgba(255,255,255,0.08)', color: 'var(--muted)', label: trace.stage };
 
   let detailContent = '';
-  if (trace.stage === 'DROPPED') {
-    detailContent = `<span style="color:var(--danger); font-weight:600;">Lý do: ${trace.reason || 'Bị lọc'}</span>`;
+  if (trace.stage === 'DROPPED' || trace.stage === 'FAILED' || trace.stage === 'CANCELLED') {
+    detailContent = `<span style="color:var(--danger); font-weight:600;">Lý do: ${escapeHtml(trace.reason || 'Bị lọc / Lỗi')}</span>`;
   } else if (trace.ttsText) {
     const voiceTag = trace.ttsVoice
-      ? `<span style="font-size:10px; color:var(--gold-bright); border:1px solid rgba(229,184,91,0.3); padding:1px 4px; border-radius:4px; margin-right:4px;">${trace.ttsVoice}</span>`
+      ? `<span style="font-size:10px; color:var(--gold-bright); border:1px solid rgba(229,184,91,0.3); padding:1px 4px; border-radius:4px; margin-right:4px;">${escapeHtml(trace.ttsVoice)}</span>`
       : '';
-    detailContent = `${voiceTag}<span style="font-style:italic;">"${trace.ttsText}"</span>`;
+    detailContent = `${voiceTag}<span style="font-style:italic;">"${escapeHtml(trace.ttsText)}"</span>`;
   } else if (trace.reason) {
-    detailContent = `<span style="color:var(--muted);">${trace.reason}</span>`;
+    detailContent = `<span style="color:var(--muted);">${escapeHtml(trace.reason)}</span>`;
   } else {
     detailContent = `<span style="color:var(--muted);">Đang xử lý pipeline</span>`;
   }
 
+  const safeNick = escapeHtml(trace.user.nickname || trace.user.uniqueId || 'Ẩn danh');
+  const safeContent = escapeHtml(trace.rawContent);
   const rowHtml = `
-    <td style="color:var(--muted); font-family:monospace;">${timeStr}</td>
-    <td><b style="color:var(--text);">${trace.user.nickname || trace.user.uniqueId || 'Ẩn danh'}</b></td>
-    <td><span style="font-size:11px; padding:2px 6px; border-radius:4px; background:rgba(255,255,255,0.06);">${trace.type}</span></td>
-    <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${trace.rawContent}">${trace.rawContent}</td>
+    <td style="color:var(--muted); font-family:monospace;">${escapeHtml(timeStr)}</td>
+    <td><b style="color:var(--text);">${safeNick}</b></td>
+    <td><span style="font-size:11px; padding:2px 6px; border-radius:4px; background:rgba(255,255,255,0.06);">${escapeHtml(trace.type)}</span></td>
+    <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${safeContent}">${safeContent}</td>
     <td><span style="font-size:11px; font-weight:600; padding:2px 6px; border-radius:4px; background:${b.bg}; color:${b.color};">${b.label}</span></td>
-    <td style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${detailContent.replace(/<[^>]+>/g, '')}">${detailContent}</td>
+    <td style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${safeContent}">${detailContent}</td>
     <td style="color:var(--muted); font-family:monospace;">${trace.latencyMs !== undefined ? `${trace.latencyMs}ms` : '-'}</td>
   `;
 
@@ -1409,7 +1461,7 @@ if (btnSendMockComment) {
 const btnExportDiagnostics = document.getElementById('btnExportDiagnostics');
 if (btnExportDiagnostics) {
   btnExportDiagnostics.onclick = () => {
-    window.open('/api/admin/diagnostics/export', '_blank');
+    window.open(`/api/admin/diagnostics/export?token=${encodeURIComponent(currentAdminToken)}`, '_blank');
   };
 }
 
@@ -2976,13 +3028,17 @@ function initSceneStudio(): void {
           method: 'POST',
           headers: {
             'Content-Type': file.type || 'image/png',
-            'X-Admin-Token': adminToken,
+            'X-Admin-Token': currentAdminToken,
             'X-File-Name': encodeURIComponent(file.name),
             'X-Asset-Name': encodeURIComponent(inpAssetName?.value || file.name),
             'X-Layer-Target': selAssetTarget?.value || 'background'
           },
           body: file
         });
+        if (res.status === 401) {
+          openLoginModal('Vui lòng đăng nhập lại để tải lên tư liệu cảnh.');
+          throw new Error('Chưa xác thực Admin');
+        }
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
@@ -3018,15 +3074,6 @@ function initSceneStudio(): void {
 let currentFortuneDeck: FortuneStick[] = [];
 let localFortuneExecutions: FortuneExecutionRecord[] = [];
 let editingFortuneStick: FortuneStick | null = null;
-
-function escapeHtml(str: string): string {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
 
 function renderFortuneExecutions(executions: FortuneExecutionRecord[]): void {
   localFortuneExecutions = [...executions];
@@ -3480,7 +3527,10 @@ function initFirstRunWizard(): void {
   // Check setup status on load
   void (async () => {
     try {
-      const status = await callAdminApi('/api/admin/setup/status');
+      const statusRes = await fetch('/api/auth/status', {
+        headers: currentAdminToken ? { 'X-Admin-Token': currentAdminToken } : {}
+      });
+      const status = await statusRes.json();
       if (status && status.isFirstRun) {
         currentStep = 1;
         updateStepUi();
@@ -3492,10 +3542,98 @@ function initFirstRunWizard(): void {
   })();
 }
 
-connectAdminWs();
-void loadAudioTracks();
-void loadPlaylists();
-initSceneStudio();
-initFortuneOracleControl();
-void loadFortuneDeck();
-initFirstRunWizard();
+async function performAdminLogin(): Promise<void> {
+  if (!inputAdminLoginPassword || !btnAdminLoginSubmit) return;
+  const password = inputAdminLoginPassword.value.trim();
+  if (!password) {
+    if (loginAlertBox) {
+      loginAlertBox.textContent = 'Vui lòng nhập mật khẩu quản trị.';
+      loginAlertBox.style.display = 'block';
+    }
+    return;
+  }
+
+  btnAdminLoginSubmit.disabled = true;
+  btnAdminLoginSubmit.textContent = 'Đang xác thực...';
+  if (loginAlertBox) loginAlertBox.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || 'Mật khẩu quản trị không đúng');
+    }
+
+    setAdminToken(data.token);
+    closeLoginModal();
+    showToast('✓ Đăng nhập quản trị thành công!');
+    initApp();
+  } catch (err: any) {
+    if (loginAlertBox) {
+      loginAlertBox.textContent = err.message || 'Lỗi đăng nhập';
+      loginAlertBox.style.display = 'block';
+    }
+  } finally {
+    btnAdminLoginSubmit.disabled = false;
+    btnAdminLoginSubmit.textContent = 'Đăng Nhập Quản Trị ➔';
+  }
+}
+
+btnAdminLoginSubmit?.addEventListener('click', () => void performAdminLogin());
+inputAdminLoginPassword?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    void performAdminLogin();
+  }
+});
+
+btnLogoutAdmin?.addEventListener('click', async () => {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } catch {
+    // ignore
+  }
+  setAdminToken('');
+  showToast('Đã đăng xuất.');
+  openLoginModal('Bạn đã đăng xuất khỏi Bảng Điều Khiển.');
+});
+
+let isAppInitialized = false;
+function initApp(): void {
+  if (isAppInitialized) return;
+  isAppInitialized = true;
+  connectAdminWs();
+  void loadAudioTracks();
+  void loadPlaylists();
+  initSceneStudio();
+  initFortuneOracleControl();
+  void loadFortuneDeck();
+}
+
+async function checkAuthAndInit(): Promise<void> {
+  try {
+    const res = await fetch('/api/auth/status', {
+      headers: currentAdminToken ? { 'X-Admin-Token': currentAdminToken } : {}
+    });
+    const data = await res.json();
+    if (data.authenticated) {
+      initApp();
+      if (data.isFirstRun) {
+        initFirstRunWizard();
+      }
+    } else if (!data.hasPassword) {
+      initFirstRunWizard();
+      initApp();
+    } else {
+      openLoginModal();
+    }
+  } catch {
+    initApp();
+  }
+}
+
+void checkAuthAndInit();

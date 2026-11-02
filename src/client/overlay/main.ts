@@ -325,7 +325,13 @@ audio.onPlaybackStarted = (traceId) => {
 
 audio.onPlaybackFinished = (traceId) => {
   if (ws && ws.readyState === WebSocket.OPEN && traceId) {
-    ws.send(JSON.stringify({ type: 'tracePlaybackEnd', traceId }));
+    ws.send(JSON.stringify({ type: 'tracePlaybackEnd', traceId, status: 'COMPLETED' }));
+  }
+};
+
+audio.onPlaybackStatus = (traceId, status, reason) => {
+  if (ws && ws.readyState === WebSocket.OPEN && traceId) {
+    ws.send(JSON.stringify({ type: 'tracePlaybackEnd', traceId, status, reason }));
   }
 };
 
