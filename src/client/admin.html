@@ -338,12 +338,41 @@
       border-color: var(--gold);
     }
 
-    .audio-tab-panel {
+    .audio-tab-panel,
+    .audio-tab-content,
+    .scene-tab-panel {
       display: none;
     }
 
-    .audio-tab-panel.active {
+    .audio-tab-panel.active,
+    .audio-tab-content.active,
+    .scene-tab-panel.active {
       display: block;
+    }
+
+    .selected-layer-row {
+      background: rgba(229, 184, 91, 0.18) !important;
+      border-left: 3px solid var(--gold) !important;
+    }
+
+    .btn-layer-order {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(229, 184, 91, 0.3);
+      color: var(--gold-bright);
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-layer-order:hover:not(:disabled) {
+      background: rgba(229, 184, 91, 0.25);
+    }
+
+    .btn-layer-order:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
     }
 
     .audio-upload-dropzone {
@@ -796,7 +825,7 @@
         </nav>
 
         <!-- Tab 1: Visual Editor with 9:16 Interactive Canvas -->
-        <div class="audio-tab-content active" id="tabVisualEditor" style="padding:14px 0;">
+        <div class="scene-tab-panel audio-tab-content active" id="tabVisualEditor" style="padding:14px 0;">
           <div style="display:grid; grid-template-columns: 360px 1fr; gap: 20px; align-items:start;">
             <!-- 9:16 Interactive Canvas -->
             <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
@@ -862,12 +891,15 @@
         </div>
 
         <!-- Tab 2: 8-Layer Stack Manager -->
-        <div class="audio-tab-content" id="tabLayerStack" style="padding:14px 0;">
+        <div class="scene-tab-panel audio-tab-content" id="tabLayerStack" style="padding:14px 0;">
+          <div style="margin-bottom:10px; font-size:12px; color:var(--muted);">
+            💡 Nhấp vào một hàng bất kỳ để xem &amp; tinh chỉnh chi tiết thuộc tính. Dùng nút ▲/▼ để đổi thứ tự hiển thị.
+          </div>
           <div style="overflow-x:auto;">
-            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <table style="width:100%; border-collapse:collapse; font-size:13px;" id="tblSceneLayers">
               <thead>
                 <tr style="border-bottom:1.5px solid var(--border); color:var(--gold-bright); text-align:left;">
-                  <th style="padding:8px 10px;">Thứ tự</th>
+                  <th style="padding:8px 10px; text-align:center;">Thứ tự</th>
                   <th style="padding:8px 10px;">Tên Lớp (Layer)</th>
                   <th style="padding:8px 10px;">Tư Liệu Gán (Asset)</th>
                   <th style="padding:8px 10px;">Chế Độ Scale</th>
@@ -875,6 +907,7 @@
                   <th style="padding:8px 10px;">Đồ Họa Gốc</th>
                   <th style="padding:8px 10px; text-align:center;">Hiển Thị</th>
                   <th style="padding:8px 10px; text-align:center;">Khóa</th>
+                  <th style="padding:8px 10px; text-align:center;">Đổi Vị Trí</th>
                 </tr>
               </thead>
               <tbody id="layerTableBody">
@@ -882,19 +915,219 @@
               </tbody>
             </table>
           </div>
-          <div style="margin-top:12px; display:flex; justify-content:flex-end; gap:8px;">
+
+          <!-- Selected Layer Properties Panel (Tinh Chỉnh Chi Tiết Layer) -->
+          <div id="selectedLayerPropsCard" style="margin-top:16px; background:rgba(0,0,0,0.35); border:1px solid var(--gold); border-radius:12px; padding:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+              <h3 style="margin:0; font-size:15px; color:var(--gold-bright); display:flex; align-items:center; gap:8px;">
+                <span>⚙️ Chi Tiết &amp; Tinh Chỉnh Thuộc Tính:</span>
+                <span id="lblSelectedLayerName" style="color:#fff; text-decoration:underline;">1. Phông Nền Chánh Điện (Background)</span>
+              </h3>
+              <span id="lblSelectedLayerBadge" style="font-size:11px; padding:2px 8px; border-radius:10px; background:rgba(229,184,91,0.2); color:var(--gold-bright); font-family:monospace;">ID: background</span>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+              <div class="field">
+                <label>Vị Trí Offset X (-500 .. +500 px)</label>
+                <input type="number" id="inpDetailLayerX" value="0" />
+              </div>
+              <div class="field">
+                <label>Vị Trí Offset Y (-500 .. +500 px)</label>
+                <input type="number" id="inpDetailLayerY" value="0" />
+              </div>
+              <div class="field">
+                <label>Chế Độ Scale (Tỷ Lệ Hiển Thị)</label>
+                <select id="selDetailLayerScaleMode">
+                  <option value="cover">COVER (Lấp đầy 9:16 giữ tỷ lệ)</option>
+                  <option value="contain">CONTAIN (Vừa vặn trong khung)</option>
+                  <option value="center">CENTER (Căn giữa nguyên bản)</option>
+                  <option value="custom">CUSTOM (Tùy chỉnh riêng biệt)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Custom Scale X (0.2 .. 3.0)</label>
+                <input type="range" id="rngDetailLayerScaleX" min="0.2" max="3.0" step="0.05" value="1.0" />
+                <span id="lblDetailLayerScaleX" style="font-size:11px; color:var(--muted);">100%</span>
+              </div>
+              <div class="field">
+                <label>Custom Scale Y (0.2 .. 3.0)</label>
+                <input type="range" id="rngDetailLayerScaleY" min="0.2" max="3.0" step="0.05" value="1.0" />
+                <span id="lblDetailLayerScaleY" style="font-size:11px; color:var(--muted);">100%</span>
+              </div>
+              <div class="field">
+                <label>Độ Mờ (Opacity: 0% .. 100%)</label>
+                <input type="range" id="rngDetailLayerOpacity" min="0" max="1" step="0.05" value="1.0" />
+                <span id="lblDetailLayerOpacity" style="font-size:11px; color:var(--muted);">100%</span>
+              </div>
+              <div class="field">
+                <label>Hiệu Ứng Hòa Trộn (Blend Mode)</label>
+                <select id="selDetailLayerBlendMode">
+                  <option value="normal">NORMAL (Bình Thường)</option>
+                  <option value="add">ADD (Phát Sáng Ánh Đạo Hào Quang)</option>
+                  <option value="screen">SCREEN (Lọc Sáng Nhẹ Nhàng)</option>
+                  <option value="multiply">MULTIPLY (Tối Trầm Cổ Kính)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Gán Tư Liệu Ảnh / Video</label>
+                <select id="selDetailLayerAsset">
+                  <option value="">(Không gán · Đồ họa mặc định)</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex; gap:16px; margin-top:14px; flex-wrap:wrap; align-items:center;">
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="chkDetailLayerVisible" checked /> Hiển Thị Layer Này
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="chkDetailLayerLocked" /> Khóa Không Cho Kéo Thả
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="chkDetailLayerHideProc" /> Ẩn Đồ Họa Gốc Khi Đã Gán Ảnh (Tránh Lặp Đôi)
+              </label>
+            </div>
+          </div>
+
+          <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
             <button type="button" class="gold" id="btnSaveLayerConfig">💾 Lưu Thứ Tự &amp; Cấu Hình Layer</button>
           </div>
         </div>
 
         <!-- Tab 3: Detailed Coordinates & Guardrails -->
-        <div class="audio-tab-content" id="tabAnchorsConfig" style="padding:14px 0;">
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
-            <!-- Ceremony Walk & Kneel Guardrails -->
+        <div class="scene-tab-panel audio-tab-content" id="tabAnchorsConfig" style="padding:14px 0;">
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px;">
+            <!-- Card 1: Buddha Statue -->
             <div style="background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:10px; padding:14px;">
-              <h4 style="margin:0 0 8px 0; color:var(--gold-bright);">Hành Lễ Tam Bái (Central Ceremony)</h4>
-              <p style="font-size:12px; color:var(--muted); margin:0 0 10px 0;">
-                Điều chỉnh vị trí Phật tử bước vào, quỳ lạy 3 lạy và rời đi. Hệ thống tự động khóa an toàn: vị trí lạy không được vượt qua Y=960 để không giẫm lên bàn thờ.
+              <h4 style="margin:0 0 6px 0; color:var(--gold-bright); display:flex; justify-content:space-between;">
+                <span>🪷 Tượng Phật &amp; Hào Quang</span>
+                <span style="font-size:11px; color:var(--muted);">Tối Cao · Ban Thờ</span>
+              </h4>
+              <p style="font-size:11px; color:var(--muted); margin:0 0 8px 0;">
+                Giới hạn an toàn: Tọa lạc cao nhất, trang nghiêm giữa chánh điện (X: 200..880, Y: 200..700).
+              </p>
+              <div class="form-row">
+                <div class="field">
+                  <label>Tọa độ X (Ngang: 200 - 880)</label>
+                  <input type="number" id="inpManualBuddhaX" value="540" min="200" max="880" />
+                </div>
+                <div class="field">
+                  <label>Tọa độ Y (Dọc: 200 - 700)</label>
+                  <input type="number" id="inpManualBuddhaY" value="520" min="200" max="700" />
+                </div>
+              </div>
+              <div class="form-row" style="margin-top:6px;">
+                <div class="field">
+                  <label>Scale (0.5 - 2.0)</label>
+                  <input type="number" id="inpManualBuddhaScale" value="1.0" step="0.05" min="0.5" max="2.0" />
+                </div>
+                <div class="field" style="display:flex; align-items:center; margin-top:20px;">
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                    <input type="checkbox" id="chkManualBuddhaVis" checked /> Hiển thị
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 2: Incense Burner -->
+            <div style="background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:10px; padding:14px;">
+              <h4 style="margin:0 0 6px 0; color:var(--gold-bright); display:flex; justify-content:space-between;">
+                <span>🔥 Lư Hương Đồng &amp; Khói Trầm</span>
+                <span style="font-size:11px; color:var(--muted);">Tiền Án · Ban Thờ</span>
+              </h4>
+              <p style="font-size:11px; color:var(--muted); margin:0 0 8px 0;">
+                Giới hạn an toàn: Đặt trang nghiêm trên bàn thờ trước tượng Phật (X: 200..880, Y: 600..1000).
+              </p>
+              <div class="form-row">
+                <div class="field">
+                  <label>Tọa độ X (Ngang: 200 - 880)</label>
+                  <input type="number" id="inpManualIncenseX" value="540" min="200" max="880" />
+                </div>
+                <div class="field">
+                  <label>Tọa độ Y (Dọc: 600 - 1000)</label>
+                  <input type="number" id="inpManualIncenseY" value="845" min="600" max="1000" />
+                </div>
+              </div>
+              <div class="form-row" style="margin-top:6px;">
+                <div class="field">
+                  <label>Scale (0.5 - 2.0)</label>
+                  <input type="number" id="inpManualIncenseScale" value="1.0" step="0.05" min="0.5" max="2.0" />
+                </div>
+                <div class="field" style="display:flex; align-items:center; margin-top:20px;">
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                    <input type="checkbox" id="chkManualIncenseVis" checked /> Hiển thị
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 3: Wooden Fish -->
+            <div style="background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:10px; padding:14px;">
+              <h4 style="margin:0 0 6px 0; color:var(--gold-bright); display:flex; justify-content:space-between;">
+                <span>🪵 Mõ Gỗ Tụng Kinh</span>
+                <span style="font-size:11px; color:var(--muted);">Bên Tả (Trái)</span>
+              </h4>
+              <p style="font-size:11px; color:var(--muted); margin:0 0 8px 0;">
+                Giới hạn an toàn: Bố trí bên trái bàn thờ / chủ lễ (X: 50..450, Y: 650..1200).
+              </p>
+              <div class="form-row">
+                <div class="field">
+                  <label>Tọa độ X (Ngang: 50 - 450)</label>
+                  <input type="number" id="inpManualFishX" value="210" min="50" max="450" />
+                </div>
+                <div class="field">
+                  <label>Tọa độ Y (Dọc: 650 - 1200)</label>
+                  <input type="number" id="inpManualFishY" value="855" min="650" max="1200" />
+                </div>
+              </div>
+              <div class="form-row" style="margin-top:6px;">
+                <div class="field">
+                  <label>Scale (0.5 - 2.0)</label>
+                  <input type="number" id="inpManualFishScale" value="1.0" step="0.05" min="0.5" max="2.0" />
+                </div>
+                <div class="field" style="display:flex; align-items:center; margin-top:20px;">
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                    <input type="checkbox" id="chkManualFishVis" checked /> Hiển thị
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 4: Temple Bell -->
+            <div style="background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:10px; padding:14px;">
+              <h4 style="margin:0 0 6px 0; color:var(--gold-bright); display:flex; justify-content:space-between;">
+                <span>🔔 Đại Hồng Chung</span>
+                <span style="font-size:11px; color:var(--muted);">Bên Hữu (Phải)</span>
+              </h4>
+              <p style="font-size:11px; color:var(--muted); margin:0 0 8px 0;">
+                Giới hạn an toàn: Bố trí bên phải bàn thờ / chủ lễ (X: 630..1030, Y: 600..1200).
+              </p>
+              <div class="form-row">
+                <div class="field">
+                  <label>Tọa độ X (Ngang: 630 - 1030)</label>
+                  <input type="number" id="inpManualBellX" value="870" min="630" max="1030" />
+                </div>
+                <div class="field">
+                  <label>Tọa độ Y (Dọc: 600 - 1200)</label>
+                  <input type="number" id="inpManualBellY" value="720" min="600" max="1200" />
+                </div>
+              </div>
+              <div class="form-row" style="margin-top:6px;">
+                <div class="field">
+                  <label>Scale (0.5 - 2.0)</label>
+                  <input type="number" id="inpManualBellScale" value="1.0" step="0.05" min="0.5" max="2.0" />
+                </div>
+                <div class="field" style="display:flex; align-items:center; margin-top:20px;">
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                    <input type="checkbox" id="chkManualBellVis" checked /> Hiển thị
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 5: Central Ceremony Walk & Kneel Guardrails -->
+            <div style="background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:10px; padding:14px;">
+              <h4 style="margin:0 0 6px 0; color:var(--gold-bright);">🙏 Hành Lễ Tam Bái (Central Ceremony)</h4>
+              <p style="font-size:11px; color:var(--muted); margin:0 0 8px 0;">
+                Giới hạn an toàn tuyệt đối: Điểm quỳ Y phải $\ge 960$ để không bước lên bàn thờ.
               </p>
               <div class="form-row">
                 <div class="field">
@@ -905,33 +1138,38 @@
                   </div>
                 </div>
                 <div class="field">
-                  <label>Điểm Quỳ Lạy (Kneel X, Y - Min Y=960)</label>
+                  <label style="color:#ff8888;">Điểm Quỳ Lạy (Kneel X, Y - Min Y: 960!)</label>
                   <div style="display:flex; gap:6px;">
                     <input type="number" id="inpCeremonyKneelX" value="540" min="300" max="780" />
                     <input type="number" id="inpCeremonyKneelY" value="1060" min="960" max="1400" />
                   </div>
                 </div>
               </div>
-              <div class="form-row" style="margin-top:8px;">
+              <div class="form-row" style="margin-top:6px;">
                 <div class="field">
                   <label>Điểm Thoát (Exit X, Y)</label>
                   <div style="display:flex; gap:6px;">
-                    <input type="number" id="inpCeremonyExitX" value="540" />
-                    <input type="number" id="inpCeremonyExitY" value="1840" />
+                    <input type="number" id="inpCeremonyExitX" value="180" />
+                    <input type="number" id="inpCeremonyExitY" value="1780" />
                   </div>
+                </div>
+                <div class="field" style="display:flex; align-items:center; margin-top:20px;">
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                    <input type="checkbox" id="chkCeremonyVis" checked /> Hiển thị nghi lễ
+                  </label>
                 </div>
               </div>
             </div>
 
-            <!-- Congregation Perspective Trapezoid -->
+            <!-- Card 6: Congregation Perspective Trapezoid -->
             <div style="background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:10px; padding:14px;">
-              <h4 style="margin:0 0 8px 0; color:var(--gold-bright);">Vùng Bồ Đoàn Đạo Tràng (Congregation)</h4>
-              <p style="font-size:12px; color:var(--muted); margin:0 0 10px 0;">
-                Căn chỉnh hình thang phối cảnh của hàng bồ đoàn hai bên thảm đỏ. Hàng trên cùng luôn khóa $\ge 1100$.
+              <h4 style="margin:0 0 6px 0; color:var(--gold-bright);">👥 Vùng Bồ Đoàn Đạo Tràng (Congregation)</h4>
+              <p style="font-size:11px; color:var(--muted); margin:0 0 8px 0;">
+                Căn chỉnh hình thang phối cảnh hàng bồ đoàn hai bên. Hàng trên cùng luôn khóa $\ge 1100$.
               </p>
               <div class="form-row">
                 <div class="field">
-                  <label>Hàng Trên (Y Top $\ge$ 1100, Nửa rộng)</label>
+                  <label style="color:#ffaa66;">Hàng Trên (Y Top $\ge$ 1100, Nửa rộng)</label>
                   <div style="display:flex; gap:6px;">
                     <input type="number" id="inpCongYTop" value="1248" min="1100" />
                     <input type="number" id="inpCongHalfTop" value="365" />
@@ -945,15 +1183,22 @@
                   </div>
                 </div>
               </div>
+              <div class="form-row" style="margin-top:6px;">
+                <div class="field" style="display:flex; align-items:center; margin-top:10px;">
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                    <input type="checkbox" id="chkCongregationVis" checked /> Hiển thị đạo tràng
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
-          <div style="margin-top:12px; display:flex; justify-content:flex-end;">
-            <button type="button" class="gold" id="btnSaveAnchorsManual">💾 Lưu Tọa Độ Pháp Khí</button>
+          <div style="margin-top:14px; display:flex; justify-content:flex-end;">
+            <button type="button" class="gold" id="btnSaveAnchorsManual">💾 Lưu Tọa Độ Pháp Khí &amp; Áp Dụng Ngay</button>
           </div>
         </div>
 
         <!-- Tab 4: Scene Assets Repository & Uploader -->
-        <div class="audio-tab-content" id="tabSceneAssets" style="padding:14px 0;">
+        <div class="scene-tab-panel audio-tab-content" id="tabSceneAssets" style="padding:14px 0;">
           <div style="display:grid; grid-template-columns: 340px 1fr; gap:16px;">
             <!-- Upload Box -->
             <div style="background:rgba(0,0,0,0.3); border:1.5px dashed var(--gold); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:10px;">
@@ -968,11 +1213,14 @@
               <div class="field">
                 <label>Gán mặc định cho Layer</label>
                 <select id="selSceneAssetLayerTarget">
-                  <option value="background">Background (Phông Nền)</option>
-                  <option value="architecture">Architecture (Kiến Trúc/Cột Kèo)</option>
-                  <option value="altar">Altar (Ban Thờ &amp; Tượng Phật)</option>
-                  <option value="floor">Floor (Sàn Lễ &amp; Bồ Đoàn)</option>
-                  <option value="foreground">Foreground (Tiền Cảnh/Hồ Sen)</option>
+                  <option value="background">1. Phông Nền (Background)</option>
+                  <option value="architecture">2. Cột Kèo &amp; Mái (Architecture)</option>
+                  <option value="altar">3. Ban Thờ &amp; Pháp Khí (Altar)</option>
+                  <option value="floor">4. Sàn Lễ Bái (Floor)</option>
+                  <option value="characters">5. Đạo Tràng (Characters)</option>
+                  <option value="ceremony">6. Nghi Lễ Tam Bái (Ceremony)</option>
+                  <option value="foreground">7. Tiền Cảnh / Sen (Foreground)</option>
+                  <option value="particles">8. Khói Trầm &amp; Cánh Hoa (Particles)</option>
                 </select>
               </div>
               <div class="field">
@@ -990,7 +1238,7 @@
                   <button type="button" id="btnRefreshSceneAssets" style="font-size:11px; padding:4px 8px;">🔄 Làm Mới</button>
                 </div>
               </div>
-              <div id="sceneAssetGrid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:12px; max-height:480px; overflow-y:auto; padding-right:6px;">
+              <div id="sceneAssetGrid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:12px; max-height:480px; overflow-y:auto; padding-right:6px;">
                 <!-- Populated dynamically -->
               </div>
             </div>

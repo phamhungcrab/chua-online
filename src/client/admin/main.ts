@@ -11,6 +11,7 @@ import type {
   SceneAssetItem,
   SceneConfig,
   SceneLayerConfig,
+  SceneLayerId,
   ScenePresetItem,
   ServerToClientWsMessage,
   TempleStateSnapshot
@@ -1846,8 +1847,61 @@ function renderSceneEditorCanvas(): void {
   ctx.fillText('CHÁNH ĐIỆN TỊNH TÂM · KHUNG THIẾT KẾ 9:16', 540, 46);
 }
 
+let selectedLayerId: SceneLayerId = 'background';
+
 function updateSceneEditorUI(): void {
-  const cer = activeSceneConfig.anchors.ceremony;
+  const anchors = activeSceneConfig.anchors;
+
+  // Sync Buddha Statue manual inputs
+  if (anchors.buddhaStatue) {
+    const bx = document.getElementById('inpManualBuddhaX') as HTMLInputElement | null;
+    const by = document.getElementById('inpManualBuddhaY') as HTMLInputElement | null;
+    const bs = document.getElementById('inpManualBuddhaScale') as HTMLInputElement | null;
+    const bv = document.getElementById('chkManualBuddhaVis') as HTMLInputElement | null;
+    if (bx) bx.value = String(anchors.buddhaStatue.x);
+    if (by) by.value = String(anchors.buddhaStatue.y);
+    if (bs) bs.value = String(anchors.buddhaStatue.scale ?? 1.0);
+    if (bv) bv.checked = anchors.buddhaStatue.visible !== false;
+  }
+
+  // Sync Incense Burner manual inputs
+  if (anchors.incenseBurner) {
+    const ix = document.getElementById('inpManualIncenseX') as HTMLInputElement | null;
+    const iy = document.getElementById('inpManualIncenseY') as HTMLInputElement | null;
+    const is = document.getElementById('inpManualIncenseScale') as HTMLInputElement | null;
+    const iv = document.getElementById('chkManualIncenseVis') as HTMLInputElement | null;
+    if (ix) ix.value = String(anchors.incenseBurner.x);
+    if (iy) iy.value = String(anchors.incenseBurner.y);
+    if (is) is.value = String(anchors.incenseBurner.scale ?? 1.0);
+    if (iv) iv.checked = anchors.incenseBurner.visible !== false;
+  }
+
+  // Sync Wooden Fish manual inputs
+  if (anchors.woodenFish) {
+    const fx = document.getElementById('inpManualFishX') as HTMLInputElement | null;
+    const fy = document.getElementById('inpManualFishY') as HTMLInputElement | null;
+    const fs = document.getElementById('inpManualFishScale') as HTMLInputElement | null;
+    const fv = document.getElementById('chkManualFishVis') as HTMLInputElement | null;
+    if (fx) fx.value = String(anchors.woodenFish.x);
+    if (fy) fy.value = String(anchors.woodenFish.y);
+    if (fs) fs.value = String(anchors.woodenFish.scale ?? 1.0);
+    if (fv) fv.checked = anchors.woodenFish.visible !== false;
+  }
+
+  // Sync Temple Bell manual inputs
+  if (anchors.templeBell) {
+    const lx = document.getElementById('inpManualBellX') as HTMLInputElement | null;
+    const ly = document.getElementById('inpManualBellY') as HTMLInputElement | null;
+    const ls = document.getElementById('inpManualBellScale') as HTMLInputElement | null;
+    const lv = document.getElementById('chkManualBellVis') as HTMLInputElement | null;
+    if (lx) lx.value = String(anchors.templeBell.x);
+    if (ly) ly.value = String(anchors.templeBell.y);
+    if (ls) ls.value = String(anchors.templeBell.scale ?? 1.0);
+    if (lv) lv.checked = anchors.templeBell.visible !== false;
+  }
+
+  // Sync Ceremony Walk & Kneel inputs
+  const cer = anchors.ceremony;
   if (cer) {
     const spX = document.getElementById('inpCeremonySpawnX') as HTMLInputElement | null;
     const spY = document.getElementById('inpCeremonySpawnY') as HTMLInputElement | null;
@@ -1855,28 +1909,122 @@ function updateSceneEditorUI(): void {
     const knY = document.getElementById('inpCeremonyKneelY') as HTMLInputElement | null;
     const exX = document.getElementById('inpCeremonyExitX') as HTMLInputElement | null;
     const exY = document.getElementById('inpCeremonyExitY') as HTMLInputElement | null;
+    const cv = document.getElementById('chkCeremonyVis') as HTMLInputElement | null;
     if (spX) spX.value = String(cer.spawnX);
     if (spY) spY.value = String(cer.spawnY);
     if (knX) knX.value = String(cer.kneelX);
     if (knY) knY.value = String(cer.kneelY);
     if (exX) exX.value = String(cer.exitX);
     if (exY) exY.value = String(cer.exitY);
+    if (cv) cv.checked = cer.visible !== false;
   }
 
-  const cong = activeSceneConfig.anchors.congregation;
+  // Sync Congregation Trapezoid inputs
+  const cong = anchors.congregation;
   if (cong) {
     const yT = document.getElementById('inpCongYTop') as HTMLInputElement | null;
     const hT = document.getElementById('inpCongHalfTop') as HTMLInputElement | null;
     const yB = document.getElementById('inpCongYBottom') as HTMLInputElement | null;
     const hB = document.getElementById('inpCongHalfBottom') as HTMLInputElement | null;
+    const gv = document.getElementById('chkCongregationVis') as HTMLInputElement | null;
     if (yT) yT.value = String(cong.yTop);
     if (hT) hT.value = String(cong.halfTop);
     if (yB) yB.value = String(cong.yBottom);
     if (hB) hB.value = String(cong.halfBottom);
+    if (gv) gv.checked = cong.visible !== false;
   }
 
   selectAnchor(selectedAnchorKey);
   renderLayerStackTable();
+}
+
+function selectLayer(layerId: SceneLayerId): void {
+  selectedLayerId = layerId;
+  const rows = document.querySelectorAll('#layerTableBody tr');
+  const layers = activeSceneConfig.layers || [];
+  const idx = layers.findIndex((l) => l.id === layerId);
+  rows.forEach((r, i) => {
+    r.classList.toggle('selected-layer-row', i === idx);
+  });
+  syncSelectedLayerPropsCard();
+}
+
+function syncSelectedLayerPropsCard(): void {
+  const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+  if (!layer) return;
+
+  const layerNames: Record<string, string> = {
+    background: '1. Phông Nền Chánh Điện (Background)',
+    architecture: '2. Cột Kèo & Mái Chùa (Architecture)',
+    altar: '3. Ban Thờ, Tượng & Pháp Khí (Altar)',
+    floor: '4. Sàn Lễ Bái & Bồ Đoàn (Floor)',
+    characters: '5. Tăng Đoàn & Phật Tử (Characters)',
+    ceremony: '6. Nghi Lễ Tam Bái & Dâng Lễ (Ceremony)',
+    foreground: '7. Hồ Sen Tiền Cảnh & Hoa Đăng (Foreground)',
+    particles: '8. Khói Trầm & Cánh Hoa (Particles)',
+    hud: '9. Khung Thông Tin SafeZone (HUD)'
+  };
+
+  const lblName = document.getElementById('lblSelectedLayerName');
+  const lblBadge = document.getElementById('lblSelectedLayerBadge');
+  const inpX = document.getElementById('inpDetailLayerX') as HTMLInputElement | null;
+  const inpY = document.getElementById('inpDetailLayerY') as HTMLInputElement | null;
+  const selScaleMode = document.getElementById('selDetailLayerScaleMode') as HTMLSelectElement | null;
+  const rngScaleX = document.getElementById('rngDetailLayerScaleX') as HTMLInputElement | null;
+  const lblScaleX = document.getElementById('lblDetailLayerScaleX');
+  const rngScaleY = document.getElementById('rngDetailLayerScaleY') as HTMLInputElement | null;
+  const lblScaleY = document.getElementById('lblDetailLayerScaleY');
+  const rngOpacity = document.getElementById('rngDetailLayerOpacity') as HTMLInputElement | null;
+  const lblOpacity = document.getElementById('lblDetailLayerOpacity');
+  const selBlend = document.getElementById('selDetailLayerBlendMode') as HTMLSelectElement | null;
+  const selAsset = document.getElementById('selDetailLayerAsset') as HTMLSelectElement | null;
+  const chkVis = document.getElementById('chkDetailLayerVisible') as HTMLInputElement | null;
+  const chkLock = document.getElementById('chkDetailLayerLocked') as HTMLInputElement | null;
+  const chkHide = document.getElementById('chkDetailLayerHideProc') as HTMLInputElement | null;
+
+  if (lblName) lblName.textContent = layerNames[layer.id] || layer.name || layer.id;
+  if (lblBadge) lblBadge.textContent = `ID: ${layer.id} (Thứ tự: ${layer.order ?? '?'})`;
+
+  if (inpX) inpX.value = String(layer.x ?? 0);
+  if (inpY) inpY.value = String(layer.y ?? 0);
+  if (selScaleMode) selScaleMode.value = layer.scaleMode || 'cover';
+  if (rngScaleX) rngScaleX.value = String(layer.scaleX ?? 1.0);
+  if (lblScaleX) lblScaleX.textContent = `${Math.round((layer.scaleX ?? 1.0) * 100)}%`;
+  if (rngScaleY) rngScaleY.value = String(layer.scaleY ?? 1.0);
+  if (lblScaleY) lblScaleY.textContent = `${Math.round((layer.scaleY ?? 1.0) * 100)}%`;
+  if (rngOpacity) rngOpacity.value = String(layer.opacity ?? 1.0);
+  if (lblOpacity) lblOpacity.textContent = `${Math.round((layer.opacity ?? 1.0) * 100)}%`;
+  if (selBlend) selBlend.value = layer.blendMode || 'normal';
+  if (chkVis) chkVis.checked = layer.visible !== false;
+  if (chkLock) chkLock.checked = Boolean(layer.locked);
+  if (chkHide) chkHide.checked = Boolean(layer.hideProcedural);
+
+  if (selAsset) {
+    selAsset.replaceChildren();
+    const optDef = document.createElement('option');
+    optDef.value = '';
+    optDef.textContent = '(Không gán · Đồ họa mặc định)';
+    selAsset.appendChild(optDef);
+    for (const a of sceneAssetsList) {
+      const opt = document.createElement('option');
+      opt.value = a.url;
+      opt.textContent = `${a.name} (${a.mediaType})`;
+      if (layer.assetUrl === a.url) opt.selected = true;
+      selAsset.appendChild(opt);
+    }
+  }
+}
+
+function moveLayerOrder(fromIdx: number, toIdx: number): void {
+  const layers = activeSceneConfig.layers;
+  if (!layers || fromIdx < 0 || toIdx < 0 || fromIdx >= layers.length || toIdx >= layers.length) return;
+  pushSceneUndo();
+  const moved = layers.splice(fromIdx, 1)[0];
+  layers.splice(toIdx, 0, moved);
+  layers.forEach((l, i) => { l.order = i + 1; });
+  renderLayerStackTable();
+  renderSceneEditorCanvas();
+  showToast(`Đã đổi vị trí layer [${moved.name || moved.id}]`);
 }
 
 function renderLayerStackTable(): void {
@@ -1890,26 +2038,42 @@ function renderLayerStackTable(): void {
     altar: '3. Ban Thờ, Tượng & Pháp Khí (Altar)',
     floor: '4. Sàn Lễ Bái & Bồ Đoàn (Floor)',
     characters: '5. Tăng Đoàn & Phật Tử (Characters)',
-    foreground: '6. Hồ Sen & Hoa Đăng (Foreground)',
-    particles: '7. Khói Trầm & Cánh Hoa (Particles)',
-    hud: '8. Hoành Phi & TikTok SafeZone (HUD)'
+    ceremony: '6. Nghi Lễ Tam Bái & Dâng Lễ (Ceremony)',
+    foreground: '7. Hồ Sen Tiền Cảnh & Hoa Đăng (Foreground)',
+    particles: '8. Khói Trầm & Cánh Hoa (Particles)',
+    hud: '9. Khung Thông Tin SafeZone (HUD)'
   };
 
-  for (const layer of activeSceneConfig.layers || []) {
+  const layers = activeSceneConfig.layers || [];
+  layers.forEach((layer, idx) => {
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid rgba(229,184,91,0.15)';
+    tr.style.cursor = 'pointer';
+    if (layer.id === selectedLayerId) {
+      tr.classList.add('selected-layer-row');
+    }
 
+    tr.onclick = (e) => {
+      const target = e.target as HTMLElement;
+      if (['INPUT', 'SELECT', 'BUTTON'].includes(target.tagName)) return;
+      selectLayer(layer.id);
+    };
+
+    // 1. Thứ tự & Reorder buttons
     const tdOrder = document.createElement('td');
-    tdOrder.textContent = String(layer.order ?? (activeSceneConfig.layers.indexOf(layer) + 1));
     tdOrder.style.padding = '8px 10px';
     tdOrder.style.fontFamily = 'monospace';
+    tdOrder.style.textAlign = 'center';
+    tdOrder.textContent = String(layer.order ?? (idx + 1));
 
+    // 2. Tên Layer
     const tdName = document.createElement('td');
-    tdName.textContent = layerNames[layer.id] || layer.id;
+    tdName.textContent = layerNames[layer.id] || layer.name || layer.id;
     tdName.style.padding = '8px 10px';
     tdName.style.fontWeight = '600';
     tdName.style.color = 'var(--text)';
 
+    // 3. Asset selector
     const tdAsset = document.createElement('td');
     tdAsset.style.padding = '8px 10px';
     const selAsset = document.createElement('select');
@@ -1929,10 +2093,12 @@ function renderLayerStackTable(): void {
     selAsset.onchange = () => {
       pushSceneUndo();
       layer.assetUrl = selAsset.value || undefined;
+      syncSelectedLayerPropsCard();
       renderSceneEditorCanvas();
     };
     tdAsset.appendChild(selAsset);
 
+    // 4. Scale mode selector
     const tdScale = document.createElement('td');
     tdScale.style.padding = '8px 10px';
     const selScale = document.createElement('select');
@@ -1948,10 +2114,12 @@ function renderLayerStackTable(): void {
     selScale.onchange = () => {
       pushSceneUndo();
       layer.scaleMode = selScale.value as any;
+      syncSelectedLayerPropsCard();
       renderSceneEditorCanvas();
     };
     tdScale.appendChild(selScale);
 
+    // 5. Opacity slider
     const tdOpacity = document.createElement('td');
     tdOpacity.style.padding = '8px 10px';
     const rngOp = document.createElement('input');
@@ -1968,12 +2136,15 @@ function renderLayerStackTable(): void {
     rngOp.oninput = () => {
       layer.opacity = Number(rngOp.value);
       lblOp.textContent = `${Math.round(Number(rngOp.value) * 100)}%`;
+      syncSelectedLayerPropsCard();
       renderSceneEditorCanvas();
     };
     tdOpacity.append(rngOp, lblOp);
 
+    // 6. Hide Procedural checkbox
     const tdHideProc = document.createElement('td');
     tdHideProc.style.padding = '8px 10px';
+    tdHideProc.style.textAlign = 'center';
     const chkHide = document.createElement('input');
     chkHide.type = 'checkbox';
     chkHide.checked = Boolean(layer.hideProcedural);
@@ -1981,10 +2152,12 @@ function renderLayerStackTable(): void {
     chkHide.onchange = () => {
       pushSceneUndo();
       layer.hideProcedural = chkHide.checked;
+      syncSelectedLayerPropsCard();
       renderSceneEditorCanvas();
     };
     tdHideProc.appendChild(chkHide);
 
+    // 7. Visible checkbox
     const tdVis = document.createElement('td');
     tdVis.style.textAlign = 'center';
     tdVis.style.padding = '8px 10px';
@@ -1994,10 +2167,12 @@ function renderLayerStackTable(): void {
     chkVis.onchange = () => {
       pushSceneUndo();
       layer.visible = chkVis.checked;
+      syncSelectedLayerPropsCard();
       renderSceneEditorCanvas();
     };
     tdVis.appendChild(chkVis);
 
+    // 8. Lock checkbox
     const tdLock = document.createElement('td');
     tdLock.style.textAlign = 'center';
     tdLock.style.padding = '8px 10px';
@@ -2007,12 +2182,46 @@ function renderLayerStackTable(): void {
     chkLock.onchange = () => {
       pushSceneUndo();
       layer.locked = chkLock.checked;
+      syncSelectedLayerPropsCard();
     };
     tdLock.appendChild(chkLock);
 
-    tr.append(tdOrder, tdName, tdAsset, tdScale, tdOpacity, tdHideProc, tdVis, tdLock);
+    // 9. Move buttons
+    const tdMove = document.createElement('td');
+    tdMove.style.textAlign = 'center';
+    tdMove.style.padding = '8px 10px';
+    tdMove.style.whiteSpace = 'nowrap';
+
+    const btnUp = document.createElement('button');
+    btnUp.type = 'button';
+    btnUp.className = 'btn-layer-order';
+    btnUp.textContent = '▲';
+    btnUp.title = 'Chuyển layer lên trên';
+    btnUp.disabled = idx === 0;
+    btnUp.onclick = (e) => {
+      e.stopPropagation();
+      moveLayerOrder(idx, idx - 1);
+    };
+
+    const btnDown = document.createElement('button');
+    btnDown.type = 'button';
+    btnDown.className = 'btn-layer-order';
+    btnDown.textContent = '▼';
+    btnDown.title = 'Chuyển layer xuống dưới';
+    btnDown.disabled = idx === layers.length - 1;
+    btnDown.style.marginLeft = '4px';
+    btnDown.onclick = (e) => {
+      e.stopPropagation();
+      moveLayerOrder(idx, idx + 1);
+    };
+
+    tdMove.append(btnUp, btnDown);
+
+    tr.append(tdOrder, tdName, tdAsset, tdScale, tdOpacity, tdHideProc, tdVis, tdLock, tdMove);
     tbody.appendChild(tr);
-  }
+  });
+
+  syncSelectedLayerPropsCard();
 }
 
 async function loadSceneAssets(): Promise<void> {
@@ -2053,12 +2262,22 @@ function renderSceneAssetsGallery(): void {
     card.innerHTML = `
       ${thumbHtml}
       <div style="font-weight:600; font-size:12px; color:var(--gold-bright); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${asset.name}</div>
-      <div style="font-size:11px; color:var(--muted); display:flex; justify-content:space-between;">
+      <div style="font-size:11px; color:var(--muted); display:flex; justify-content:space-between; margin-bottom:4px;">
         <span>${asset.targetLayer || asset.layerTarget || 'background'}</span>
         <span>${sizeMb} MB</span>
       </div>
-      <div style="display:flex; gap:4px; margin-top:4px;">
-        <button type="button" class="btn-assign-asset" data-url="${asset.url}" data-target="${asset.targetLayer || asset.layerTarget || 'background'}" style="flex:1; font-size:11px; padding:3px 4px;">Gán Vào Layer</button>
+      <div style="display:flex; gap:4px; align-items:center;">
+        <select class="sel-asset-layer-assign" style="flex:1; font-size:11px; padding:2px 4px;">
+          <option value="background" ${asset.targetLayer === 'background' ? 'selected' : ''}>1. Phông Nền</option>
+          <option value="architecture" ${asset.targetLayer === 'architecture' ? 'selected' : ''}>2. Cột Kèo</option>
+          <option value="altar" ${asset.targetLayer === 'altar' ? 'selected' : ''}>3. Ban Thờ</option>
+          <option value="floor" ${asset.targetLayer === 'floor' ? 'selected' : ''}>4. Sàn Lễ</option>
+          <option value="characters" ${asset.targetLayer === 'characters' ? 'selected' : ''}>5. Đạo Tràng</option>
+          <option value="ceremony" ${asset.targetLayer === 'ceremony' ? 'selected' : ''}>6. Nghi Lễ</option>
+          <option value="foreground" ${asset.targetLayer === 'foreground' ? 'selected' : ''}>7. Tiền Cảnh</option>
+          <option value="particles" ${asset.targetLayer === 'particles' ? 'selected' : ''}>8. Khói Trầm</option>
+        </select>
+        <button type="button" class="btn-assign-asset-chosen" data-url="${asset.url}" style="font-size:11px; padding:3px 6px;">Gán</button>
         <button type="button" class="btn-del-asset" data-id="${asset.id}" style="color:var(--danger); border-color:var(--danger); font-size:11px; padding:3px 6px;">🗑️</button>
       </div>
     `;
@@ -2066,11 +2285,13 @@ function renderSceneAssetsGallery(): void {
     grid.appendChild(card);
   }
 
-  grid.querySelectorAll<HTMLButtonElement>('.btn-assign-asset').forEach((btn) => {
+  grid.querySelectorAll<HTMLButtonElement>('.btn-assign-asset-chosen').forEach((btn) => {
     btn.onclick = () => {
       const url = btn.getAttribute('data-url');
-      const target = btn.getAttribute('data-target');
-      if (!url || !target) return;
+      const card = btn.closest('.scene-asset-card');
+      const selTarget = card?.querySelector('.sel-asset-layer-assign') as HTMLSelectElement | null;
+      const target = selTarget?.value || 'background';
+      if (!url) return;
       pushSceneUndo();
       const layer = activeSceneConfig.layers?.find((l) => l.id === target);
       if (layer) {
@@ -2130,21 +2351,32 @@ async function applyActiveSceneToLive(): Promise<void> {
 }
 
 function initSceneStudio(): void {
-  document.querySelectorAll<HTMLButtonElement>('.audio-tab-btn[data-scenetab]').forEach((btn) => {
+  // 1. Independent Tab Switching without full reload
+  document.querySelectorAll<HTMLButtonElement>('#sceneNavTabs .audio-tab-btn[data-scenetab]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.audio-tab-btn[data-scenetab]').forEach((b) => b.classList.remove('active'));
-      document.querySelectorAll('#sceneStudioSection .audio-tab-content').forEach((p) => p.classList.remove('active'));
+      document.querySelectorAll('#sceneNavTabs .audio-tab-btn[data-scenetab]').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('#sceneStudioSection .scene-tab-panel, #sceneStudioSection .audio-tab-content').forEach((p) => p.classList.remove('active'));
       btn.classList.add('active');
       const tabId = btn.getAttribute('data-scenetab');
       if (tabId) {
-        document.getElementById(tabId)?.classList.add('active');
+        const targetPanel = document.getElementById(tabId);
+        if (targetPanel) {
+          targetPanel.classList.add('active');
+        }
         if (tabId === 'tabVisualEditor') {
           renderSceneEditorCanvas();
+        } else if (tabId === 'tabLayerStack') {
+          renderLayerStackTable();
+        } else if (tabId === 'tabAnchorsConfig') {
+          updateSceneEditorUI();
+        } else if (tabId === 'tabSceneAssets') {
+          renderSceneAssetsGallery();
         }
       }
     });
   });
 
+  // 2. Anchor chips in Tab 1
   document.querySelectorAll<HTMLButtonElement>('#anchorChipsContainer [data-anchor]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const key = btn.getAttribute('data-anchor') as any;
@@ -2152,6 +2384,7 @@ function initSceneStudio(): void {
     });
   });
 
+  // 3. Tab 1 Range & Number input synchronization
   if (rngAnchorX) {
     rngAnchorX.oninput = () => {
       if (numAnchorX) numAnchorX.value = rngAnchorX.value;
@@ -2198,6 +2431,7 @@ function initSceneStudio(): void {
     };
   }
 
+  // 4. Interactive 9:16 Canvas Drag & Drop with Guardrails
   if (editorCanvas) {
     editorCanvas.addEventListener('pointerdown', (e) => {
       const rect = editorCanvas.getBoundingClientRect();
@@ -2226,32 +2460,202 @@ function initSceneStudio(): void {
           pushSceneUndo();
           selectAnchor(c.key);
           isDraggingAnchor = true;
+          editorCanvas.style.cursor = 'grabbing';
           return;
         }
       }
     });
 
     editorCanvas.addEventListener('pointermove', (e) => {
-      if (!isDraggingAnchor) return;
       const rect = editorCanvas.getBoundingClientRect();
       const scaleX = 1080 / rect.width;
       const scaleY = 1920 / rect.height;
       const x = (e.clientX - rect.left) * scaleX;
       const y = (e.clientY - rect.top) * scaleY;
 
+      if (!isDraggingAnchor) {
+        // Hover cursor cue
+        const anchors = activeSceneConfig.anchors;
+        const candidateList = [
+          { ax: anchors.buddhaStatue.x, ay: anchors.buddhaStatue.y, radius: 70 },
+          { ax: anchors.incenseBurner.x, ay: anchors.incenseBurner.y, radius: 60 },
+          { ax: anchors.woodenFish.x, ay: anchors.woodenFish.y, radius: 55 },
+          { ax: anchors.templeBell.x, ay: anchors.templeBell.y, radius: 55 },
+          { ax: anchors.ceremony.kneelX, ay: anchors.ceremony.kneelY, radius: 65 }
+        ];
+        const isHovering = candidateList.some((c) => Math.hypot(x - c.ax, y - c.ay) <= c.radius);
+        editorCanvas.style.cursor = isHovering ? 'grab' : 'crosshair';
+        return;
+      }
+
       updateSelectedAnchorCoords(x, y);
 
-      if (rngAnchorX) rngAnchorX.value = String(Math.round(x));
-      if (numAnchorX) numAnchorX.value = String(Math.round(x));
-      if (rngAnchorY) rngAnchorY.value = String(Math.round(y));
-      if (numAnchorY) numAnchorY.value = String(Math.round(y));
+      // Read back the safely clamped coordinates from anchors
+      const anchors = activeSceneConfig.anchors;
+      let clampedX = Math.round(x);
+      let clampedY = Math.round(y);
+      switch (selectedAnchorKey) {
+        case 'buddhaStatue':
+          clampedX = anchors.buddhaStatue.x;
+          clampedY = anchors.buddhaStatue.y;
+          break;
+        case 'incenseBurner':
+          clampedX = anchors.incenseBurner.x;
+          clampedY = anchors.incenseBurner.y;
+          break;
+        case 'woodenFish':
+          clampedX = anchors.woodenFish.x;
+          clampedY = anchors.woodenFish.y;
+          break;
+        case 'templeBell':
+          clampedX = anchors.templeBell.x;
+          clampedY = anchors.templeBell.y;
+          break;
+        case 'ceremony':
+          clampedX = anchors.ceremony.kneelX;
+          clampedY = anchors.ceremony.kneelY;
+          break;
+      }
+
+      if (rngAnchorX) rngAnchorX.value = String(clampedX);
+      if (numAnchorX) numAnchorX.value = String(clampedX);
+      if (rngAnchorY) rngAnchorY.value = String(clampedY);
+      if (numAnchorY) numAnchorY.value = String(clampedY);
     });
 
     window.addEventListener('pointerup', () => {
-      isDraggingAnchor = false;
+      if (isDraggingAnchor) {
+        isDraggingAnchor = false;
+        if (editorCanvas) editorCanvas.style.cursor = 'crosshair';
+      }
     });
   }
 
+  // 5. Selected Layer Properties Panel Events
+  const inpDetailX = document.getElementById('inpDetailLayerX') as HTMLInputElement | null;
+  const inpDetailY = document.getElementById('inpDetailLayerY') as HTMLInputElement | null;
+  const selDetailScaleMode = document.getElementById('selDetailLayerScaleMode') as HTMLSelectElement | null;
+  const rngDetailScaleX = document.getElementById('rngDetailLayerScaleX') as HTMLInputElement | null;
+  const lblDetailScaleX = document.getElementById('lblDetailLayerScaleX');
+  const rngDetailScaleY = document.getElementById('rngDetailLayerScaleY') as HTMLInputElement | null;
+  const lblDetailScaleY = document.getElementById('lblDetailLayerScaleY');
+  const rngDetailOpacity = document.getElementById('rngDetailLayerOpacity') as HTMLInputElement | null;
+  const lblDetailOpacity = document.getElementById('lblDetailLayerOpacity');
+  const selDetailBlend = document.getElementById('selDetailLayerBlendMode') as HTMLSelectElement | null;
+  const selDetailAsset = document.getElementById('selDetailLayerAsset') as HTMLSelectElement | null;
+  const chkDetailVis = document.getElementById('chkDetailLayerVisible') as HTMLInputElement | null;
+  const chkDetailLock = document.getElementById('chkDetailLayerLocked') as HTMLInputElement | null;
+  const chkDetailHide = document.getElementById('chkDetailLayerHideProc') as HTMLInputElement | null;
+
+  if (inpDetailX) {
+    inpDetailX.oninput = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.x = Number(inpDetailX.value) || 0;
+        renderSceneEditorCanvas();
+      }
+    };
+  }
+  if (inpDetailY) {
+    inpDetailY.oninput = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.y = Number(inpDetailY.value) || 0;
+        renderSceneEditorCanvas();
+      }
+    };
+  }
+  if (selDetailScaleMode) {
+    selDetailScaleMode.onchange = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.scaleMode = selDetailScaleMode.value as any;
+        renderLayerStackTable();
+        renderSceneEditorCanvas();
+      }
+    };
+  }
+  if (rngDetailScaleX) {
+    rngDetailScaleX.oninput = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.scaleX = Number(rngDetailScaleX.value);
+        if (lblDetailScaleX) lblDetailScaleX.textContent = `${Math.round(layer.scaleX * 100)}%`;
+        renderSceneEditorCanvas();
+      }
+    };
+  }
+  if (rngDetailScaleY) {
+    rngDetailScaleY.oninput = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.scaleY = Number(rngDetailScaleY.value);
+        if (lblDetailScaleY) lblDetailScaleY.textContent = `${Math.round(layer.scaleY * 100)}%`;
+        renderSceneEditorCanvas();
+      }
+    };
+  }
+  if (rngDetailOpacity) {
+    rngDetailOpacity.oninput = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.opacity = Number(rngDetailOpacity.value);
+        if (lblDetailOpacity) lblDetailOpacity.textContent = `${Math.round(layer.opacity * 100)}%`;
+        renderLayerStackTable();
+        renderSceneEditorCanvas();
+      }
+    };
+  }
+  if (selDetailBlend) {
+    selDetailBlend.onchange = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.blendMode = selDetailBlend.value as any;
+        renderSceneEditorCanvas();
+      }
+    };
+  }
+  if (selDetailAsset) {
+    selDetailAsset.onchange = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.assetUrl = selDetailAsset.value || undefined;
+        renderLayerStackTable();
+        renderSceneEditorCanvas();
+      }
+    };
+  }
+  if (chkDetailVis) {
+    chkDetailVis.onchange = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.visible = chkDetailVis.checked;
+        renderLayerStackTable();
+        renderSceneEditorCanvas();
+      }
+    };
+  }
+  if (chkDetailLock) {
+    chkDetailLock.onchange = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.locked = chkDetailLock.checked;
+        renderLayerStackTable();
+      }
+    };
+  }
+  if (chkDetailHide) {
+    chkDetailHide.onchange = () => {
+      const layer = activeSceneConfig.layers?.find((l) => l.id === selectedLayerId);
+      if (layer) {
+        layer.hideProcedural = chkDetailHide.checked;
+        renderLayerStackTable();
+        renderSceneEditorCanvas();
+      }
+    };
+  }
+
+  // 6. Action buttons (Presets, Reset, Undo, Redo, Apply)
   document.getElementById('btnApplySceneToLive')?.addEventListener('click', () => {
     void applyActiveSceneToLive();
   });
@@ -2339,42 +2743,102 @@ function initSceneStudio(): void {
     void applyActiveSceneToLive();
   });
 
+  // 7. Tab 3: Detailed Coordinates & Guardrails Manual Save
   document.getElementById('btnSaveAnchorsManual')?.addEventListener('click', () => {
-    const cer = activeSceneConfig.anchors.ceremony;
-    const cong = activeSceneConfig.anchors.congregation;
+    pushSceneUndo();
+    const anchors = activeSceneConfig.anchors;
 
+    // Buddha Statue
+    const bx = document.getElementById('inpManualBuddhaX') as HTMLInputElement | null;
+    const by = document.getElementById('inpManualBuddhaY') as HTMLInputElement | null;
+    const bs = document.getElementById('inpManualBuddhaScale') as HTMLInputElement | null;
+    const bv = document.getElementById('chkManualBuddhaVis') as HTMLInputElement | null;
+    if (anchors.buddhaStatue && bx && by && bs) {
+      anchors.buddhaStatue.x = Math.max(200, Math.min(880, Number(bx.value) || 540));
+      anchors.buddhaStatue.y = Math.max(200, Math.min(700, Number(by.value) || 520));
+      anchors.buddhaStatue.scale = Math.max(0.5, Math.min(2.0, Number(bs.value) || 1.0));
+      if (bv) anchors.buddhaStatue.visible = bv.checked;
+    }
+
+    // Incense Burner
+    const ix = document.getElementById('inpManualIncenseX') as HTMLInputElement | null;
+    const iy = document.getElementById('inpManualIncenseY') as HTMLInputElement | null;
+    const is = document.getElementById('inpManualIncenseScale') as HTMLInputElement | null;
+    const iv = document.getElementById('chkManualIncenseVis') as HTMLInputElement | null;
+    if (anchors.incenseBurner && ix && iy && is) {
+      anchors.incenseBurner.x = Math.max(200, Math.min(880, Number(ix.value) || 540));
+      anchors.incenseBurner.y = Math.max(600, Math.min(1000, Number(iy.value) || 845));
+      anchors.incenseBurner.scale = Math.max(0.5, Math.min(2.0, Number(is.value) || 1.0));
+      if (iv) anchors.incenseBurner.visible = iv.checked;
+    }
+
+    // Wooden Fish
+    const fx = document.getElementById('inpManualFishX') as HTMLInputElement | null;
+    const fy = document.getElementById('inpManualFishY') as HTMLInputElement | null;
+    const fs = document.getElementById('inpManualFishScale') as HTMLInputElement | null;
+    const fv = document.getElementById('chkManualFishVis') as HTMLInputElement | null;
+    if (anchors.woodenFish && fx && fy && fs) {
+      anchors.woodenFish.x = Math.max(50, Math.min(450, Number(fx.value) || 210));
+      anchors.woodenFish.y = Math.max(650, Math.min(1200, Number(fy.value) || 855));
+      anchors.woodenFish.scale = Math.max(0.5, Math.min(2.0, Number(fs.value) || 1.0));
+      if (fv) anchors.woodenFish.visible = fv.checked;
+    }
+
+    // Temple Bell
+    const lx = document.getElementById('inpManualBellX') as HTMLInputElement | null;
+    const ly = document.getElementById('inpManualBellY') as HTMLInputElement | null;
+    const ls = document.getElementById('inpManualBellScale') as HTMLInputElement | null;
+    const lv = document.getElementById('chkManualBellVis') as HTMLInputElement | null;
+    if (anchors.templeBell && lx && ly && ls) {
+      anchors.templeBell.x = Math.max(630, Math.min(1030, Number(lx.value) || 870));
+      anchors.templeBell.y = Math.max(600, Math.min(1200, Number(ly.value) || 720));
+      anchors.templeBell.scale = Math.max(0.5, Math.min(2.0, Number(ls.value) || 1.0));
+      if (lv) anchors.templeBell.visible = lv.checked;
+    }
+
+    // Central Ceremony Guardrail
+    const cer = anchors.ceremony;
     const spX = document.getElementById('inpCeremonySpawnX') as HTMLInputElement | null;
     const spY = document.getElementById('inpCeremonySpawnY') as HTMLInputElement | null;
     const knX = document.getElementById('inpCeremonyKneelX') as HTMLInputElement | null;
     const knY = document.getElementById('inpCeremonyKneelY') as HTMLInputElement | null;
     const exX = document.getElementById('inpCeremonyExitX') as HTMLInputElement | null;
     const exY = document.getElementById('inpCeremonyExitY') as HTMLInputElement | null;
+    const cv = document.getElementById('chkCeremonyVis') as HTMLInputElement | null;
 
     if (cer && spX && spY && knX && knY && exX && exY) {
       cer.spawnX = Number(spX.value);
       cer.spawnY = Number(spY.value);
       cer.kneelX = Math.max(300, Math.min(780, Number(knX.value)));
+      // Strict guardrail check: Y >= 960!
       cer.kneelY = Math.max(960, Math.min(1400, Number(knY.value)));
       cer.exitX = Number(exX.value);
       cer.exitY = Number(exY.value);
+      if (cv) cer.visible = cv.checked;
     }
 
+    // Congregation Perspective
+    const cong = anchors.congregation;
     const yT = document.getElementById('inpCongYTop') as HTMLInputElement | null;
     const hT = document.getElementById('inpCongHalfTop') as HTMLInputElement | null;
     const yB = document.getElementById('inpCongYBottom') as HTMLInputElement | null;
     const hB = document.getElementById('inpCongHalfBottom') as HTMLInputElement | null;
+    const gv = document.getElementById('chkCongregationVis') as HTMLInputElement | null;
 
     if (cong && yT && hT && yB && hB) {
+      // Strict guardrail check: Y Top >= 1100!
       cong.yTop = Math.max(1100, Number(yT.value));
       cong.halfTop = Number(hT.value);
       cong.yBottom = Number(yB.value);
       cong.halfBottom = Number(hB.value);
+      if (gv) cong.visible = gv.checked;
     }
 
     renderSceneEditorCanvas();
     void applyActiveSceneToLive();
   });
 
+  // 8. Tab 4: Scene Assets Uploader
   const btnUploadAsset = document.getElementById('btnUploadSceneAsset');
   const inpAssetFile = document.getElementById('inpSceneAssetFile') as HTMLInputElement | null;
   const inpAssetName = document.getElementById('inpSceneAssetName') as HTMLInputElement | null;
