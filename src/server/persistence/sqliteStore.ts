@@ -526,19 +526,33 @@ export class SqlitePersistenceStore {
       created_at: number;
     }>;
 
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      filename: r.filename,
-      filepath: r.filepath,
-      category: r.category,
-      durationSec: r.duration_sec,
-      fileSizeBytes: r.file_size_bytes,
-      mimeType: r.mime_type,
-      isDefaultFor: r.is_default_for,
-      createdAt: r.created_at,
-      url: `/audio-uploads/${encodeURIComponent(r.filename)}`
-    }));
+    return rows.map((r) => {
+      let sizeBytes = r.file_size_bytes;
+      if ((!sizeBytes || sizeBytes <= 0) && r.filepath && fs.existsSync(r.filepath)) {
+        try {
+          const stat = fs.statSync(r.filepath);
+          if (stat.size > 0) {
+            sizeBytes = stat.size;
+            this.db.prepare('UPDATE audio_tracks SET file_size_bytes = ? WHERE id = ?').run(sizeBytes, r.id);
+          }
+        } catch {
+          // ignore
+        }
+      }
+      return {
+        id: r.id,
+        name: r.name,
+        filename: r.filename,
+        filepath: r.filepath,
+        category: r.category,
+        durationSec: r.duration_sec,
+        fileSizeBytes: sizeBytes,
+        mimeType: r.mime_type,
+        isDefaultFor: r.is_default_for,
+        createdAt: r.created_at,
+        url: `/audio-uploads/${encodeURIComponent(r.filename)}`
+      };
+    });
   }
 
   public getAudioTrack(id: string): AudioTrackItem | null {

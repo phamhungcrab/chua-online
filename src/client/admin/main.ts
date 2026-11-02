@@ -574,10 +574,43 @@ document.querySelectorAll<HTMLButtonElement>('.audio-tab-btn[data-tab]').forEach
 });
 
 // 2. Audio Track Management & Rendering
-let currentCategoryFilter = 'all';
+const SAVED_AUDIO_FILTER_KEY = 'temple_audio_cat_filter';
+let currentCategoryFilter = localStorage.getItem(SAVED_AUDIO_FILTER_KEY) || 'all';
+
+const AUDIO_CAT_DISPLAY_NAMES: Record<string, string> = {
+  all: 'Tất Cả',
+  meditation: 'Nhạc Thiền (BGM)',
+  chant: 'Tụng Kinh',
+  buddha_name: 'Niệm Phật',
+  bell: 'Tiếng Chuông',
+  wooden_fish: 'Tiếng Mõ',
+  prayer: 'Lời Cầu Nguyện',
+  greeting: 'Lời Chào',
+  festival: 'Lễ Hội',
+  sfx: 'Hiệu Ứng'
+};
+
+function formatAudioFileSize(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function syncCategoryFilterButtons(): void {
+  document.querySelectorAll<HTMLButtonElement>('[data-cat-filter]').forEach((b) => {
+    const cat = b.getAttribute('data-cat-filter') || 'all';
+    if (cat === currentCategoryFilter) {
+      b.classList.add('active');
+    } else {
+      b.classList.remove('active');
+    }
+  });
+}
 
 async function loadAudioTracks(): Promise<void> {
   try {
+    syncCategoryFilterButtons();
     const res = await callAdminApi('/api/admin/audio/tracks', {
       category: currentCategoryFilter === 'all' ? undefined : currentCategoryFilter
     });
@@ -590,12 +623,18 @@ async function loadAudioTracks(): Promise<void> {
 function renderAudioTracks(tracks: any[]): void {
   const container = document.getElementById('audioTrackListContainer');
   const badge = document.getElementById('audioTrackCountBadge');
-  if (badge) badge.textContent = `${tracks.length} tệp âm thanh`;
+  const filterDisplay = AUDIO_CAT_DISPLAY_NAMES[currentCategoryFilter] || currentCategoryFilter;
+  if (badge) badge.textContent = `${tracks.length} tệp (${filterDisplay})`;
   if (!container) return;
 
   if (tracks.length === 0) {
-    container.innerHTML =
-      '<div style="color:var(--muted); font-size:13px; text-align:center; padding:18px;">Chưa có tệp âm thanh nào trong mục này. Hãy kéo thả tệp MP3/WAV/OGG ở trên.</div>';
+    container.innerHTML = `
+      <div style="background:rgba(255,255,255,0.03); border:1px dashed rgba(229,184,91,0.25); border-radius:8px; padding:22px 16px; text-align:center;">
+        <div style="font-size:24px; margin-bottom:6px;">🎵</div>
+        <div style="color:var(--gold-bright); font-size:13px; font-weight:600; margin-bottom:4px;">Chưa có tệp âm thanh nào trong danh mục "${filterDisplay}"</div>
+        <div style="color:var(--muted); font-size:12px;">Bạn có thể kéo thả tệp mới ở trên và chọn mục "${filterDisplay}", hoặc chọn danh mục khác ở thanh lọc.</div>
+      </div>
+    `;
     return;
   }
 
@@ -604,36 +643,41 @@ function renderAudioTracks(tracks: any[]): void {
     const card = document.createElement('div');
     card.className = 'audio-track-card';
     const dateStr = new Date(tr.createdAt).toLocaleDateString('vi-VN');
-    const sizeMb = (tr.fileSizeBytes / (1024 * 1024)).toFixed(1);
-
-    const catNames: Record<string, string> = {
-      meditation: 'Nhạc Thiền (BGM)',
-      chant: 'Tụng Kinh',
-      buddha_name: 'Niệm Phật',
-      bell: 'Tiếng Chuông',
-      wooden_fish: 'Tiếng Mõ',
-      prayer: 'Lời Cầu Nguyện',
-      greeting: 'Lời Chào',
-      festival: 'Lễ Hội',
-      sfx: 'Hiệu Ứng'
-    };
-    const catDisplay = catNames[tr.category] || tr.category;
+    const sizeStr = formatAudioFileSize(tr.fileSizeBytes);
+    const catDisplay = AUDIO_CAT_DISPLAY_NAMES[tr.category] || tr.category;
+    const isSmallSample = tr.fileSizeBytes > 0 && tr.fileSizeBytes < 1024;
 
     card.innerHTML = `
-      <div class="audio-track-info">
+      <div class="audio-track-info" style="flex:1;">
         <div style="display:flex; align-items:center; gap:8px;">
           <span class="audio-category-pill">${catDisplay}</span>
           <span class="audio-track-title">${tr.name}</span>
+          ${isSmallSample ? '<span title="Tệp rất nhỏ (<1KB) - Có thể là tệp mẫu hoặc thử nghiệm" style="color:#f59e0b; font-size:11px; font-weight:600;">⚠️ Tệp mẫu nhỏ</span>' : ''}
         </div>
         <div class="audio-track-meta">
           <span>📁 ${tr.filename}</span>
-          <span>⚖️ ${sizeMb} MB</span>
+          <span>⚖️ ${sizeStr}</span>
+          <span id="dur_${tr.id}">⏱️ --:--</span>
           <span>📅 ${dateStr}</span>
         </div>
-        <audio controls src="${tr.url}" preload="none" style="width:100%; height:32px; margin-top:4px;"></audio>
+        <audio controls src="${tr.url}" preload="metadata" style="width:100%; height:32px; margin-top:4px;"></audio>
       </div>
-      <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
-        <select class="sel-track-default" data-track-id="${tr.id}" style="font-size:12px; padding:4px 6px;">
+      <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end; min-width:210px;">
+        <div style="display:flex; align-items:center; gap:6px; width:100%; justify-content:flex-end;">
+          <span style="font-size:11px; color:var(--muted);">Mục:</span>
+          <select class="sel-track-category" data-track-id="${tr.id}" style="font-size:12px; padding:3px 6px; border-radius:4px; background:rgba(0,0,0,0.4); color:var(--text); border:1px solid rgba(229,184,91,0.25);">
+            <option value="meditation" ${tr.category === 'meditation' ? 'selected' : ''}>Nhạc Thiền (BGM)</option>
+            <option value="chant" ${tr.category === 'chant' ? 'selected' : ''}>Tụng Kinh</option>
+            <option value="buddha_name" ${tr.category === 'buddha_name' ? 'selected' : ''}>Niệm Phật</option>
+            <option value="bell" ${tr.category === 'bell' ? 'selected' : ''}>Tiếng Chuông</option>
+            <option value="wooden_fish" ${tr.category === 'wooden_fish' ? 'selected' : ''}>Tiếng Mõ</option>
+            <option value="prayer" ${tr.category === 'prayer' ? 'selected' : ''}>Lời Cầu Nguyện</option>
+            <option value="greeting" ${tr.category === 'greeting' ? 'selected' : ''}>Lời Chào</option>
+            <option value="festival" ${tr.category === 'festival' ? 'selected' : ''}>Lễ Hội</option>
+            <option value="sfx" ${tr.category === 'sfx' ? 'selected' : ''}>Hiệu Ứng</option>
+          </select>
+        </div>
+        <select class="sel-track-default" data-track-id="${tr.id}" style="font-size:12px; padding:4px 6px; width:100%;">
           <option value="" ${!tr.isDefaultFor ? 'selected' : ''}>-- Không gán mặc định --</option>
           <option value="bgm" ${tr.isDefaultFor === 'bgm' ? 'selected' : ''}>🎵 Làm Nhạc Nền (BGM)</option>
           <option value="bell" ${tr.isDefaultFor === 'bell' ? 'selected' : ''}>🔔 Tiếng Chuông Lớn</option>
@@ -643,8 +687,37 @@ function renderAudioTracks(tracks: any[]): void {
         <button type="button" class="btn-delete-track" data-track-id="${tr.id}" style="color:var(--danger); border-color:var(--danger); font-size:11px; padding:3px 8px;">🗑️ Xóa tệp</button>
       </div>
     `;
+
+    const audioEl = card.querySelector('audio');
+    const durSpan = card.querySelector(`#dur_${tr.id}`);
+    if (audioEl && durSpan) {
+      audioEl.addEventListener('loadedmetadata', () => {
+        if (isFinite(audioEl.duration) && audioEl.duration > 0) {
+          const m = Math.floor(audioEl.duration / 60);
+          const s = Math.floor(audioEl.duration % 60).toString().padStart(2, '0');
+          durSpan.textContent = `⏱️ ${m}:${s}`;
+        } else {
+          durSpan.textContent = '⏱️ 0:00';
+        }
+      });
+    }
+
     container.appendChild(card);
   }
+
+  container.querySelectorAll<HTMLSelectElement>('.sel-track-category').forEach((sel) => {
+    sel.onchange = async () => {
+      const trackId = sel.getAttribute('data-track-id');
+      const newCategory = sel.value;
+      try {
+        await callAdminApi('/api/admin/audio/tracks/update', { id: trackId, category: newCategory });
+        showToast(`Đã chuyển tệp sang danh mục "${AUDIO_CAT_DISPLAY_NAMES[newCategory] || newCategory}"`);
+        void loadAudioTracks();
+      } catch (e: any) {
+        showToast(`Lỗi: ${e.message}`);
+      }
+    };
+  });
 
   container.querySelectorAll<HTMLSelectElement>('.sel-track-default').forEach((sel) => {
     sel.onchange = async () => {
@@ -677,12 +750,13 @@ function renderAudioTracks(tracks: any[]): void {
 
 document.querySelectorAll<HTMLButtonElement>('[data-cat-filter]').forEach((btn) => {
   btn.onclick = () => {
-    document.querySelectorAll('[data-cat-filter]').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
     currentCategoryFilter = btn.getAttribute('data-cat-filter') || 'all';
+    localStorage.setItem(SAVED_AUDIO_FILTER_KEY, currentCategoryFilter);
+    syncCategoryFilterButtons();
     void loadAudioTracks();
   };
 });
+syncCategoryFilterButtons();
 
 // Playlists Management
 const btnCreatePlaylist = document.getElementById('btnCreatePlaylist');

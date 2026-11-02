@@ -66,6 +66,8 @@ export class TempleAudioEngine {
   private ttsPlaying = false;
   private isAudioLeader = false;
   private currentAudio: HTMLAudioElement | null = null;
+  private activeAudioResolve: (() => void) | null = null;
+  private activeAudioTimeout: ReturnType<typeof setTimeout> | null = null;
   public onPlaybackStarted?: (traceId?: string) => void;
   public onPlaybackFinished?: (traceId?: string) => void;
 
@@ -81,6 +83,10 @@ export class TempleAudioEngine {
   }
 
   public stopCurrentAudio(): void {
+    if (this.activeAudioTimeout) {
+      clearTimeout(this.activeAudioTimeout);
+      this.activeAudioTimeout = null;
+    }
     if (this.currentAudio) {
       try {
         this.currentAudio.pause();
@@ -90,6 +96,11 @@ export class TempleAudioEngine {
       }
       this.currentAudio = null;
     }
+    if (this.activeAudioResolve) {
+      const resolve = this.activeAudioResolve;
+      this.activeAudioResolve = null;
+      resolve();
+    }
     this.ttsPlaying = false;
     this.setDucking(false);
   }
@@ -97,6 +108,44 @@ export class TempleAudioEngine {
   public clearTtsQueue(): void {
     this.ttsQueue.length = 0;
     this.stopCurrentAudio();
+  }
+
+  /**
+   * Reset Session: Cleanly halts active TTS, clears the queue, releases ducking,
+   * resumes Web Audio context if suspended, ensures unmuted state, and cleanly restarts
+   * ambient background music and rhythm without timer or audio player duplication.
+   */
+  public resetSession(): void {
+    // 1. Clear queue and stop current audio immediately
+    this.ttsQueue.length = 0;
+    this.stopCurrentAudio();
+
+    // 2. Ensure engine is unmuted and unblocked
+    this.isMuted = false;
+    this.ttsPlaying = false;
+    this.setDucking(false);
+
+    // 3. Resume AudioContext if suspended
+    if (this.ctx && this.ctx.state === 'suspended') {
+      void this.ctx.resume();
+    }
+
+    // 4. Restore Master Gain volume
+    if (this.ctx && this.masterGain) {
+      const now = this.ctx.currentTime;
+      this.masterGain.gain.cancelScheduledValues(now);
+      this.masterGain.gain.setValueAtTime(this.settings.audioMasterVolume, now);
+    }
+
+    // 5. Cleanly restart ambient pentatonic loop
+    if (this.ambientTimer) {
+      clearInterval(this.ambientTimer);
+      this.ambientTimer = null;
+    }
+    this.startAmbientLoop();
+
+    // 6. Cleanly reschedule rhythm mõ
+    this.rescheduleRhythmMo();
   }
 
   public setMuted(muted: boolean): void {
@@ -440,33 +489,47 @@ export class TempleAudioEngine {
       try {
         const audio = new Audio(url);
         this.currentAudio = audio;
+        this.activeAudioResolve = resolve;
+
         const effectiveVol = Math.max(
           0,
           Math.min(1, this.settings.audioTtsVolume * this.settings.audioMasterVolume)
         );
         audio.volume = effectiveVol;
-        const timeout = setTimeout(() => {
-          if (this.currentAudio === audio) this.currentAudio = null;
+
+        const cleanup = () => {
+          if (this.activeAudioTimeout) {
+            clearTimeout(this.activeAudioTimeout);
+            this.activeAudioTimeout = null;
+          }
+          if (this.currentAudio === audio) {
+            this.currentAudio = null;
+          }
+          if (this.activeAudioResolve === resolve) {
+            this.activeAudioResolve = null;
+          }
+        };
+
+        this.activeAudioTimeout = setTimeout(() => {
+          cleanup();
           resolve();
         }, 20000);
 
         audio.onended = () => {
-          clearTimeout(timeout);
-          if (this.currentAudio === audio) this.currentAudio = null;
+          cleanup();
           resolve();
         };
         audio.onerror = () => {
-          clearTimeout(timeout);
-          if (this.currentAudio === audio) this.currentAudio = null;
+          cleanup();
           resolve();
         };
         audio.play().catch(() => {
-          clearTimeout(timeout);
-          if (this.currentAudio === audio) this.currentAudio = null;
+          cleanup();
           resolve();
         });
       } catch {
         this.currentAudio = null;
+        this.activeAudioResolve = null;
         resolve();
       }
     });

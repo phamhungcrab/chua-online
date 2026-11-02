@@ -373,6 +373,12 @@ function connectWebSocket(): void {
           audio.stopCurrentAudio();
           audio.clearTtsQueue();
           break;
+        case 'sessionReset':
+          audio.resetSession();
+          if (prayerTickerTextEl) {
+            prayerTickerTextEl.textContent = 'Nam Mô A Di Đà Phật • Chúc Quý Phật Tử Vạn Sự Cát Tường';
+          }
+          break;
         case 'prayer': {
           const p = msg.prayer;
           prayerTickerTextEl.textContent = `${p.nickname} [${p.category}]: “${p.wishText}”`;

@@ -579,6 +579,7 @@ export type ServerToClientWsMessage =
   | { type: 'stopAudio' }
   | { type: 'clearTtsQueue' }
   | { type: 'restartAudioEngine' }
+  | { type: 'sessionReset'; timestamp: number }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string; timestamp: string };
 
 export interface ITikTokConnector {

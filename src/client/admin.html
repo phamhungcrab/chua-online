@@ -338,6 +338,32 @@
       border-color: var(--gold);
     }
 
+    .audio-cat-filter-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(229, 184, 91, 0.22);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 5px 11px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+
+    .audio-cat-filter-btn:hover {
+      background: rgba(229, 184, 91, 0.16);
+      color: var(--gold-bright);
+      border-color: rgba(229, 184, 91, 0.5);
+    }
+
+    .audio-cat-filter-btn.active {
+      background: linear-gradient(180deg, #b8321e, #78190c);
+      color: #ffe699;
+      border-color: var(--gold);
+      box-shadow: 0 0 8px rgba(229, 184, 91, 0.35);
+    }
+
     .audio-tab-panel,
     .audio-tab-content,
     .scene-tab-panel {
@@ -1299,16 +1325,19 @@
 
           <!-- Category Filter Bar -->
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
-            <div style="display:flex; gap:6px; flex-wrap:wrap;">
-              <button type="button" class="audio-tab-btn active" data-cat-filter="all">Tất cả</button>
-              <button type="button" class="audio-tab-btn" data-cat-filter="meditation">Nhạc Thiền</button>
-              <button type="button" class="audio-tab-btn" data-cat-filter="chant">Tụng Kinh</button>
-              <button type="button" class="audio-tab-btn" data-cat-filter="buddha_name">Niệm Phật</button>
-              <button type="button" class="audio-tab-btn" data-cat-filter="bell">Chuông</button>
-              <button type="button" class="audio-tab-btn" data-cat-filter="wooden_fish">Mõ</button>
-              <button type="button" class="audio-tab-btn" data-cat-filter="sfx">Hiệu Ứng</button>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;" id="audioCategoryFilterGroup">
+              <button type="button" class="audio-cat-filter-btn active" data-cat-filter="all">Tất cả</button>
+              <button type="button" class="audio-cat-filter-btn" data-cat-filter="meditation">Nhạc Thiền</button>
+              <button type="button" class="audio-cat-filter-btn" data-cat-filter="chant">Tụng Kinh</button>
+              <button type="button" class="audio-cat-filter-btn" data-cat-filter="buddha_name">Niệm Phật</button>
+              <button type="button" class="audio-cat-filter-btn" data-cat-filter="bell">Chuông</button>
+              <button type="button" class="audio-cat-filter-btn" data-cat-filter="wooden_fish">Mõ</button>
+              <button type="button" class="audio-cat-filter-btn" data-cat-filter="prayer">Cầu Nguyện</button>
+              <button type="button" class="audio-cat-filter-btn" data-cat-filter="greeting">Lời Chào</button>
+              <button type="button" class="audio-cat-filter-btn" data-cat-filter="festival">Lễ Hội</button>
+              <button type="button" class="audio-cat-filter-btn" data-cat-filter="sfx">Hiệu Ứng</button>
             </div>
-            <span id="audioTrackCountBadge" style="font-size:12px; color:var(--muted);">0 tệp âm thanh</span>
+            <span id="audioTrackCountBadge" style="font-size:12px; color:var(--muted); font-weight:600;">0 tệp âm thanh</span>
           </div>
 
           <!-- Audio Track Cards List -->

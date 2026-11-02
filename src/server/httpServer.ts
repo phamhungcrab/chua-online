@@ -1085,12 +1085,15 @@ async function handleAdminAction(
         ctx.engine.resetTransientState();
         ctx.broadcastWs({ type: 'stopAudio' });
         ctx.broadcastWs({ type: 'clearTtsQueue' });
+        ctx.broadcastWs({ type: 'sessionReset', timestamp: Date.now() });
+        const snap = ctx.getFullSnapshot();
+        ctx.broadcastWs({ type: 'snapshot', snapshot: snap });
         return {
           ok: true,
           scope,
           backupPath,
-          message: 'Đã đặt lại phiên hiện tại: dọn sạch hàng đợi TTS, reset trạng thái tạm và bộ đếm.',
-          snapshot: ctx.getFullSnapshot()
+          message: 'Đã đặt lại phiên hiện tại: dừng âm thanh, dọn sạch hàng đợi TTS, khôi phục nhạc thiền và làm mới bộ đếm.',
+          snapshot: snap
         };
       } else if (scope === 'scene') {
         const backupPath = ctx.store.createBackupSnapshot();
