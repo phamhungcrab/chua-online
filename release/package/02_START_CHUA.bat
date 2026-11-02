@@ -63,20 +63,23 @@ echo.
 echo [1/4] Docker Engine: ĐÃ SẴN SÀNG
 
 :: 3. Kiểm tra xem image Chùa đã được nạp vào Docker chưa
-echo [2/4] Đang kiểm tra Docker Image 'temple-live-studio:v1.0'...
-docker image inspect temple-live-studio:v1.0 >nul 2>&1
+echo [2/4] Đang kiểm tra Docker Image 'temple-live-studio:v1.0.1'...
+docker image inspect temple-live-studio:v1.0.1 >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-    if exist "%~dp0images\temple-live-studio-v1.0.tar" (
+    if exist "%~dp0images\temple-live-studio-v1.0.1.tar" (
         echo Đang nạp Docker image từ bộ cài (chỉ thực hiện 1 lần duy nhất, khoảng 15-20 giây)...
-        docker load -i "%~dp0images\temple-live-studio-v1.0.tar"
+        docker load -i "%~dp0images\temple-live-studio-v1.0.1.tar"
         if %ERRORLEVEL% neq 0 (
             echo [LỖI] Không thể nạp Docker image. Vui lòng kiểm tra dung lượng ổ đĩa.
             pause
             exit /b 1
         )
         echo [NẠP THÀNH CÔNG] Docker image đã sẵn sàng.
+    ) else if exist "%~dp0images\temple-live-studio-v1.0.tar" (
+        echo Đang nạp Docker image v1.0 dự phòng...
+        docker load -i "%~dp0images\temple-live-studio-v1.0.tar"
     ) else (
-        echo [LỖI] Không tìm thấy file '%~dp0images\temple-live-studio-v1.0.tar'.
+        echo [LỖI] Không tìm thấy file '%~dp0images\temple-live-studio-v1.0.1.tar'.
         echo Vui lòng đảm bảo bạn đã giải nén đầy đủ thư mục của bộ cài.
         pause
         exit /b 1

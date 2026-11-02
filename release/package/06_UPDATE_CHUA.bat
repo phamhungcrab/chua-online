@@ -49,6 +49,12 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo [4/4] Đang khởi động lại ứng dụng với phiên bản mới...
+for %%i in ("%UPDATE_TAR%") do set "TAR_NAME=%%~ni"
+set "TAG_NAME=%TAR_NAME:temple-live-studio-=%"
+if not "%TAG_NAME%"=="" (
+    echo Đang đồng bộ cấu hình sang phiên bản: temple-live-studio:%TAG_NAME%
+    powershell -NoProfile -Command "(Get-Content -Path '%~dp0docker-compose.yml' -Raw) -replace 'image:\s*temple-live-studio:[^\r\n]+', 'image: temple-live-studio:%TAG_NAME%' | Set-Content -Path '%~dp0docker-compose.yml' -NoNewline"
+)
 docker compose down
 docker compose up -d
 

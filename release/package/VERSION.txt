@@ -1,7 +1,7 @@
 ======================================================================
 TEMPLE LIVE STUDIO — PHIÊN BẢN PHÂN PHỐI KHÁCH HÀNG
 ======================================================================
-Phiên bản: 1.0.0
+Phiên bản: 1.0.1
 Ngày phát hành: 2026-11-02
 Kiến trúc: linux/amd64 (Tương thích Docker Desktop WSL2 Windows 10/11 x64)
 Nền tảng chạy: Windows 10 (2004+) / Windows 11 64-bit + Docker Desktop
@@ -9,4 +9,10 @@ Công nghệ: Node.js v24.22.2, TypeScript, SQLite WAL (Atomic VACUUM Snapshot),
            PixiJS v8, Edge Neural Vietnamese TTS, WebSocket Real-time Router
 Tác quyền: Temple Live Studio Team
 Ghi chú bảo mật: Không chứa mật khẩu, cookie, khóa API cá nhân hay token bí mật.
+Nhật ký thay đổi v1.0.1:
+- Khắc phục triệt để lỗi chuyển tab trong Visual Scene Studio & Quản Lý 8 Layer.
+- Nâng cấp bảng 8 layer: hỗ trợ nút đổi thứ tự (▲/▼), bật/tắt hiển thị, khóa và panel thuộc tính chi tiết.
+- Nâng cấp Visual Editor: kéo thả chuột trực tiếp trên khung 9:16 kèm khóa giới hạn an toàn tự động (Guardrails).
+- Bổ sung điều khiển tọa độ số học cho 6 mốc thực thể: Tượng Phật, Lư Hương, Mõ Gỗ, Chuông, Tam Bái, Đạo Tràng.
+- Bổ sung tính năng gán tư liệu ảnh/video tùy chọn từ kho vào bất kỳ layer nào trong 8 layer.
 ======================================================================
