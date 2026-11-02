@@ -1511,11 +1511,11 @@ document.getElementById('btnTriggerResetFactory')?.addEventListener('click', () 
 
 if (inpResetConfirmation && btnConfirmResetAction) {
   inpResetConfirmation.addEventListener('input', () => {
-    btnConfirmResetAction.disabled = inpResetConfirmation.value.trim().toUpperCase() !== 'RESET';
+    btnConfirmResetAction.disabled = inpResetConfirmation.value.trim() !== 'RESET';
   });
 
   inpResetConfirmation.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && inpResetConfirmation.value.trim().toUpperCase() === 'RESET') {
+    if (e.key === 'Enter' && inpResetConfirmation.value.trim() === 'RESET') {
       e.preventDefault();
       btnConfirmResetAction.click();
     }
@@ -1547,7 +1547,7 @@ window.addEventListener('keydown', (e) => {
 
 if (btnConfirmResetAction && inpResetConfirmation && modalResetConfirmation) {
   btnConfirmResetAction.addEventListener('click', async () => {
-    if (inpResetConfirmation.value.trim().toUpperCase() !== 'RESET') return;
+    if (inpResetConfirmation.value.trim() !== 'RESET') return;
     try {
       btnConfirmResetAction.disabled = true;
       btnConfirmResetAction.textContent = 'Đang thực hiện...';
@@ -1576,7 +1576,7 @@ if (btnConfirmResetAction && inpResetConfirmation && modalResetConfirmation) {
       showToast(`Lỗi đặt lại: ${err.message}`);
     } finally {
       btnConfirmResetAction.textContent = 'Xác Nhận Thực Hiện';
-      btnConfirmResetAction.disabled = inpResetConfirmation.value.trim().toUpperCase() !== 'RESET';
+      btnConfirmResetAction.disabled = inpResetConfirmation.value.trim() !== 'RESET';
     }
   });
 }
