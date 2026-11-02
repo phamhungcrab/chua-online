@@ -74,23 +74,33 @@ export interface StudioServerInstance {
   close: () => Promise<void>;
 }
 
-export function isAllowedLocalHostHeader(hostHeader: string | undefined, port: number): boolean {
+export function isAllowedLocalHostHeader(hostHeader: string | undefined, port?: number): boolean {
   if (!hostHeader) return false;
   const h = hostHeader.trim().toLowerCase();
-  return (
-    h === `localhost:${port}` ||
-    h === `127.0.0.1:${port}` ||
-    h === `[::1]:${port}` ||
-    h === 'localhost' ||
-    h === '127.0.0.1'
-  );
+  const [hostname, portStr] = h.split(':');
+  const isLoopbackHost =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname === '0.0.0.0';
+  if (isLoopbackHost) return true;
+  if (port && portStr === String(port)) {
+    return isLoopbackHost;
+  }
+  return false;
 }
 
-export function isAllowedOriginHeader(originHeader: string | undefined, port: number): boolean {
+export function isAllowedOriginHeader(originHeader: string | undefined, port?: number): boolean {
   if (!originHeader) return true; // Non-browser local client or OBS Browser Source without Origin
   try {
     const parsed = new URL(originHeader);
-    return isAllowedLocalHostHeader(parsed.host, port);
+    const hostname = parsed.hostname.toLowerCase();
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '[::1]' ||
+      hostname === '0.0.0.0'
+    );
   } catch {
     return false;
   }
@@ -134,9 +144,9 @@ export async function createStudioServer(options?: {
   synthesizeTtsEnabled?: boolean;
   connector?: ITikTokConnector;
 }): Promise<StudioServerInstance> {
-  const host = options?.host || process.env.HOST || '127.0.0.1';
+  const host = options?.host || process.env.HOST || (process.env.DOCKER_CONTAINER ? '0.0.0.0' : '127.0.0.1');
   const requestedPort = options?.port ?? Number(process.env.PORT || 3000);
-  const dataDir = options?.dataDir || path.join(PROJECT_ROOT, 'data');
+  const dataDir = options?.dataDir || process.env.TEMPLE_DATA_DIR || path.join(PROJECT_ROOT, 'data');
   const ttsCacheDir = path.join(dataDir, 'tts-cache');
   const audioUploadsDir = path.join(dataDir, 'audio-uploads');
   fs.mkdirSync(audioUploadsDir, { recursive: true });
@@ -145,12 +155,18 @@ export async function createStudioServer(options?: {
   const clientDistDir = path.join(PROJECT_ROOT, 'dist', 'client');
   const publicDir = path.join(PROJECT_ROOT, 'public');
 
-  const adminToken =
-    options?.adminToken ||
-    process.env.TEMPLE_ADMIN_TOKEN ||
-    crypto.randomBytes(24).toString('hex');
-
   const store = new SqlitePersistenceStore(dataDir);
+
+  let adminToken = options?.adminToken || process.env.TEMPLE_ADMIN_TOKEN;
+  if (!adminToken) {
+    const existingToken = store.getKv<string>('admin_persistent_token');
+    if (existingToken && typeof existingToken === 'string' && existingToken.length >= 16) {
+      adminToken = existingToken;
+    } else {
+      adminToken = crypto.randomBytes(24).toString('hex');
+      store.setKv('admin_persistent_token', adminToken);
+    }
+  }
 
   let gitCommitShort = 'main';
   try {
@@ -591,6 +607,7 @@ export async function createStudioServer(options?: {
 
       try {
         const result = await handleAdminAction(pathname, body, {
+          dataDir,
           engine,
           simulator,
           connector,
@@ -842,6 +859,7 @@ async function handleAdminAction(
   pathname: string,
   body: Record<string, any>,
   ctx: {
+    dataDir: string;
     engine: TempleStateEngine;
     simulator: OfflineEventSimulator;
     connector: ITikTokConnector;
@@ -1194,6 +1212,79 @@ async function handleAdminAction(
       const updated = ctx.engine.updateSceneConfig(DEFAULT_SCENE_CONFIG);
       ctx.broadcastWs({ type: 'sceneConfigUpdate', sceneConfig: updated });
       return { sceneConfig: updated, snapshot: ctx.getFullSnapshot() };
+    }
+
+    case '/api/admin/setup/status': {
+      const isFirstRun = !ctx.store.getKv<boolean>('first_run_completed', false);
+      const authHash = ctx.store.getKv<string>('admin_auth_hash', '');
+      const snapshot = ctx.getFullSnapshot();
+      return {
+        ok: true,
+        isFirstRun,
+        hasPassword: Boolean(authHash),
+        currentSettings: snapshot.settings,
+        activeScene: ctx.engine.getSceneConfig()
+      };
+    }
+
+    case '/api/admin/setup/complete': {
+      const { password, tiktokUsername, voice, scenePresetId } = body;
+      if (password && typeof password === 'string' && password.trim().length >= 4) {
+        const salt = crypto.randomBytes(16).toString('hex');
+        const hash = crypto.pbkdf2Sync(password.trim(), salt, 10000, 32, 'sha256').toString('hex');
+        ctx.store.setKv('admin_auth_salt', salt);
+        ctx.store.setKv('admin_auth_hash', hash);
+      }
+      const updatedSettings: Record<string, any> = {};
+      if (tiktokUsername && typeof tiktokUsername === 'string') {
+        updatedSettings.tiktokUniqueId = tiktokUsername.trim().replace(/^@/, '');
+      }
+      if (voice && typeof voice === 'string') {
+        updatedSettings.fortuneVoice = voice;
+      }
+      if (Object.keys(updatedSettings).length > 0) {
+        ctx.engine.updateSettings(updatedSettings as any);
+      }
+      if (scenePresetId && typeof scenePresetId === 'string') {
+        const presets = ctx.store.loadScenePresets();
+        const found = presets.find((p) => p.id === scenePresetId);
+        if (found) {
+          const updatedScene = ctx.engine.updateSceneConfig(found.config);
+          ctx.broadcastWs({ type: 'sceneConfigUpdate', sceneConfig: updatedScene });
+        }
+      }
+      ctx.store.setKv('first_run_completed', true);
+      return {
+        ok: true,
+        message: 'Hoàn tất thiết lập ban đầu thành công! Chào mừng quý đạo hữu đến với Temple Live Studio.',
+        snapshot: ctx.getFullSnapshot()
+      };
+    }
+
+    case '/api/admin/system/backup-consistent': {
+      const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+      const backupSubdir = path.join(ctx.dataDir, 'backups', `consistent_${timestamp}`);
+      fs.mkdirSync(backupSubdir, { recursive: true });
+      const dbBackupPath = path.join(backupSubdir, 'temple-studio.sqlite');
+      ctx.store.createConsistentSqliteBackup(dbBackupPath);
+      const snapshot = ctx.getFullSnapshot();
+      const bundle = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        settings: snapshot.settings,
+        rules: ctx.store.loadRules(),
+        sceneConfig: ctx.engine.getSceneConfig()
+      };
+      const configBundlePath = path.join(backupSubdir, 'config-bundle.json');
+      fs.writeFileSync(configBundlePath, JSON.stringify(bundle, null, 2), 'utf8');
+      return {
+        ok: true,
+        timestamp,
+        backupDir: backupSubdir,
+        dbBackupFile: 'temple-studio.sqlite',
+        configBundleFile: 'config-bundle.json',
+        message: 'Đã tạo bản sao lưu SQLite nhất quán (VACUUM atomic snapshot) bao gồm toàn bộ dữ liệu WAL.'
+      };
     }
 
     default:

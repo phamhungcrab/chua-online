@@ -2,7 +2,7 @@ import { createStudioServer } from './httpServer.ts';
 
 async function main(): Promise<void> {
   const port = Number(process.env.PORT || 3000);
-  const host = process.env.HOST || '127.0.0.1';
+  const host = process.env.HOST || (process.env.DOCKER_CONTAINER ? '0.0.0.0' : '127.0.0.1');
 
   const studio = await createStudioServer({ port, host });
 

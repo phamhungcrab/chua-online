@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cẩm Nang Vận Hành — Temple Live Studio</title>
+  <style>
+    :root {
+      --bg: #0f0d0a;
+      --card-bg: #191510;
+      --border: #352b1e;
+      --accent: #d4a359;
+      --accent-light: #f3cf8a;
+      --text: #eae4d9;
+      --text-muted: #9e9282;
+      --success: #38a169;
+      --warning: #dd6b20;
+      --code-bg: #231c14;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .header {
+      background: linear-gradient(180deg, #241b11 0%, #120e0a 100%);
+      border-bottom: 2px solid var(--accent);
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0;
+      color: var(--accent-light);
+      font-size: 28px;
+      letter-spacing: 0.5px;
+    }
+    .header p {
+      margin: 8px 0 0;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 30px auto;
+      padding: 0 20px 60px;
+    }
+    .step-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .step-badge {
+      background-color: var(--accent);
+      color: #0f0d0a;
+      font-weight: 700;
+      font-size: 15px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-title {
+      font-size: 19px;
+      font-weight: 600;
+      color: var(--accent-light);
+      margin: 0;
+    }
+    .callout {
+      background-color: var(--code-bg);
+      border-left: 4px solid var(--accent);
+      padding: 12px 16px;
+      border-radius: 0 6px 6px 0;
+      margin: 14px 0;
+      font-size: 13px;
+    }
+    .callout.success { border-left-color: var(--success); }
+    .callout.warning { border-left-color: var(--warning); }
+    .url-box {
+      background-color: #0c0906;
+      border: 1px dashed var(--accent);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 14px;
+      color: var(--accent-light);
+      display: inline-block;
+      margin: 6px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 13px;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+    }
+    th {
+      background-color: #241c13;
+      color: var(--accent-light);
+    }
+    .btn-visual {
+      display: inline-block;
+      background: var(--accent);
+      color: #120e0a;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>🪷 HƯỚNG DẪN VẬN HÀNH TEMPLE LIVE STUDIO</h1>
+    <p>Hệ Thống Chánh Điện Trực Tuyến 2.5D Dành Cho Windows &amp; TikTok LIVE Studio</p>
+  </div>
+
+  <div class="container">
+
+    <!-- BƯỚC 1 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-badge">1</div>
+        <h2 class="step-title">Cài Đặt Nền Tảng Docker Desktop (Chỉ Làm 1 Lần Duy Nhất)</h2>
+      </div>
+      <p>
+        Temple Live Studio được đóng gói theo tiêu chuẩn container bảo mật cao. Khách hàng chỉ cần máy tính Windows đã cài <strong>Docker Desktop</strong>. Không cần cài Node.js, Python, Git hay bất cứ công cụ lập trình nào.
+      </p>
+      <ol>
+        <li>Nhấp đúp file: <code class="url-box">01_CAI_DOCKER.bat</code>.</li>
+        <li>Hệ thống sẽ tự động kiểm tra xem máy bạn đã có Docker Desktop chưa.</li>
+        <li>Nếu chưa có, màn hình sẽ cung cấp tùy chọn tự động cài đặt qua <strong>Winget</strong> hoặc mở website chính thức để tải.</li>
+        <li>Sau khi cài đặt xong Docker Desktop, nếu Windows yêu cầu <em>Restart</em> máy tính, hãy khởi động lại Windows một lần.</li>
+      </ol>
+      <div class="callout success">
+        ✓ <strong>Mẹo:</strong> Sau khi cài Docker Desktop, bạn có thể tích chọn <em>"Start Docker Desktop when you log in"</em> trong mục Settings của Docker để hệ thống luôn sẵn sàng chạy mỗi khi mở máy.
+      </div>
+    </div>
+
+    <!-- BƯỚC 2 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-badge">2</div>
+        <h2 class="step-title">Khởi Động Hệ Thống Với 1 Cú Nhấp Chuột</h2>
+      </div>
+      <p>
+        Mỗi khi muốn livestream hoặc mở không gian Chùa Online:
+      </p>
+      <ol>
+        <li>Nhấp đúp file: <code class="url-box">02_START_CHUA.bat</code>.</li>
+        <li>Hệ thống sẽ tự động kiểm tra và mở Docker Desktop (nếu đang tắt), nạp hình ảnh Chánh Điện và khởi chạy máy chủ ngầm.</li>
+        <li>Khi màn hình thông báo màu xanh lá xuất hiện, trình duyệt web của bạn sẽ <strong>tự động mở Bảng Điều Khiển Admin</strong>.</li>
+      </ol>
+      <table>
+        <tr>
+          <th>Giao diện</th>
+          <th>Đường dẫn truy cập</th>
+          <th>Mục đích sử dụng</th>
+        </tr>
+        <tr>
+          <td><strong>Admin Dashboard</strong></td>
+          <td><span class="url-box">http://127.0.0.1:3000/admin</span></td>
+          <td>Điều khiển lễ bái, nhạc kinh, quẻ xăm, cấu hình TikTok LIVE</td>
+        </tr>
+        <tr>
+          <td><strong>Overlay Chuẩn</strong></td>
+          <td><span class="url-box">http://127.0.0.1:3000/overlay</span></td>
+          <td>Dán vào OBS Studio (1080×1920) để phát sóng trực tiếp</td>
+        </tr>
+        <tr>
+          <td><strong>Overlay Nền Trong Suốt</strong></td>
+          <td><span class="url-box">http://127.0.0.1:3000/overlay?obs=1&amp;transparent=1</span></td>
+          <td>Dành cho phát ghép đè lên nền video cảnh thật</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- BƯỚC 3 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-badge">3</div>
+        <h2 class="step-title">Cấu Hình Lần Đầu Qua First-Run Wizard</h2>
+      </div>
+      <p>
+        Khi mở trang Admin lần đầu tiên, giao diện sẽ hiển thị <strong>Trình Hướng Dẫn Thiết Lập (4 bước)</strong>:
+      </p>
+      <ul>
+        <li><strong>Bước 1 - Mật khẩu Admin:</strong> Đặt mật khẩu quản trị riêng để bảo vệ các nút điều khiển.</li>
+        <li><strong>Bước 2 - Kênh TikTok:</strong> Điền tên người dùng TikTok (ví dụ: <code class="url-box">chua_online_vietnam</code>).</li>
+        <li><strong>Bước 3 - Giọng đọc Tiếng Việt:</strong> Chọn giọng đọc truyền cảm <em>Hoài My (Nữ)</em> hoặc <em>Nam Minh (Nam)</em> và bấm <strong>Nghe Thử</strong>.</li>
+        <li><strong>Bước 4 - Lấy Nguồn OBS:</strong> Bấm nút <strong>Sao chép Link Overlay</strong> để đưa vào OBS Studio.</li>
+      </ul>
+    </div>
+
+    <!-- BƯỚC 4 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-badge">4</div>
+        <h2 class="step-title">Cấu Hình Nguồn Phát Trong OBS Studio</h2>
+      </div>
+      <p>
+        Để đưa hình ảnh Chánh Điện 2.5D sang buổi livestream với chất lượng đồ họa sắc nét nhất:
+      </p>
+      <ol>
+        <li>Trong OBS Studio, tại mục <strong>Sources</strong> (Nguồn), bấm dấu <strong>+</strong> chọn <strong>Browser</strong> (Trình duyệt).</li>
+        <li>Đặt tên nguồn (ví dụ: <em>Chanh_Dien_Online</em>).</li>
+        <li>Điền thông số chuẩn:
+          <ul>
+            <li><strong>URL:</strong> <code class="url-box">http://127.0.0.1:3000/overlay</code></li>
+            <li><strong>Width (Chiều rộng):</strong> <code>1080</code></li>
+            <li><strong>Height (Chiều cao):</strong> <code>1920</code> (Chuẩn video dọc 9:16 TikTok)</li>
+            <li><strong>FPS:</strong> <code>60</code></li>
+            <li>☑ Tích chọn: <strong>Control audio via OBS</strong> (Bắt buộc để âm thanh chuông mỏ, nhạc tụng truyền qua OBS).</li>
+          </ul>
+        </li>
+      </ol>
+      <div class="callout">
+        💡 <strong>Kiểm soát âm thanh:</strong> Trong mục <em>Audio Mixer</em> của OBS, bạn sẽ thấy thanh âm lượng <em>Chanh_Dien_Online</em>. Bạn có thể tăng giảm âm lượng tùy ý tại đây.
+      </div>
+    </div>
+
+    <!-- BƯỚC 5 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-badge">5</div>
+        <h2 class="step-title">Đưa Hình &amp; Âm Sang TikTok LIVE Studio</h2>
+      </div>
+      <p>
+        Có 2 phương án đưa tín hiệu từ OBS sang TikTok LIVE Studio tùy theo tài khoản của bạn:
+      </p>
+      <p><strong>Phương án A: Sử Dụng Window Capture (Khuyên dùng và phổ biến nhất)</strong></p>
+      <ul>
+        <li>Trong TikTok LIVE Studio, bấm <strong>Thêm Nguồn (Add Source)</strong> ➔ chọn <strong>Cửa sổ (Window Capture)</strong>.</li>
+        <li>Chọn cửa sổ trình duyệt (Brave / Chrome / Edge) đang mở link Overlay <code class="url-box">http://127.0.0.1:3000/overlay</code>.</li>
+        <li>Nhấp chuột vào cửa sổ trình duyệt 1 lần để mở khóa tự động phát âm thanh (Autoplay Unlock).</li>
+      </ul>
+      <p><strong>Phương án B: Sử Dụng OBS Virtual Camera</strong></p>
+      <ul>
+        <li>Trong OBS Studio, bấm <strong>Start Virtual Camera</strong>.</li>
+        <li>Trong TikTok LIVE Studio, thêm nguồn <strong>Camera</strong> và chọn <em>OBS Virtual Camera</em>.</li>
+        <li><strong style="color:var(--warning);">Lưu ý:</strong> OBS Virtual Camera chỉ truyền hình ảnh, không truyền âm thanh. Do đó, bạn dùng một cáp âm thanh ảo (VB-Audio Virtual Cable) hoặc Window Audio Capture trong TikTok LIVE Studio để thu âm thanh.</li>
+      </ul>
+    </div>
+
+    <!-- BƯỚC 6 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-badge">6</div>
+        <h2 class="step-title">Các Tính Năng &amp; Lệnh Tương Tác Của Người Xem</h2>
+      </div>
+      <p>
+        Khi đang phát LIVE thật, khán giả xem live chỉ cần gõ bình luận vào khung chat TikTok:
+      </p>
+      <table>
+        <tr>
+          <th>Hành động người xem</th>
+          <th>Từ khóa nhận diện</th>
+          <th>Phản hồi trên Chánh Điện</th>
+        </tr>
+        <tr>
+          <td>🎋 <strong>Xin Quẻ / Rút Xăm</strong></td>
+          <td><code>xin xăm</code>, <code>xin quẻ</code>, <code>rút quẻ</code>, <code>gieo que</code>, <code>bốc quẻ</code></td>
+          <td>Hộp quẻ rung, thẻ quẻ bay ra, hiện bài thơ và giọng AI tiếng Việt đọc to lời giải nghĩa cát hung.</td>
+        </tr>
+        <tr>
+          <td>🪷 <strong>Dâng Hoa Sen Cúng Phật</strong></td>
+          <td><code>dâng hoa</code>, <code>cúng hoa</code>, <code>hoa sen</code></td>
+          <td>Đóa hoa sen tươi thắm xuất hiện trên bàn thờ, ghi nhận công đức.</td>
+        </tr>
+        <tr>
+          <td>🕯️ <strong>Thắp Hương Cầu An</strong></td>
+          <td><code>thắp hương</code>, <code>dâng hương</code>, <code>nam mô a di đà phật</code></td>
+          <td>Ba nén hương phát sáng, khói trầm bay bổng và chuông ngân vang.</td>
+        </tr>
+        <tr>
+          <td>🔔 <strong>Thỉnh Đại Hồng Chung</strong></td>
+          <td><code>thỉnh chuông</code>, <code>tiếng chuông</code></td>
+          <td>Chuông đồng rung chuyển với hiệu ứng sóng âm ba chiều.</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- BƯỚC 7 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-badge">7</div>
+        <h2 class="step-title">Sao Lưu Dữ Liệu &amp; Xử Lý Sự Cố</h2>
+      </div>
+      <ul>
+        <li><strong>Sao lưu dữ liệu:</strong> Nhấp đúp <code class="url-box">04_BACKUP.bat</code>. Hệ thống sẽ tạo một bản sao lưu toàn vẹn (bao gồm SQLite, file nhạc và hình nền) trong thư mục <code>backups\</code> có gắn ngày giờ.</li>
+        <li><strong>Xem nhật ký lỗi:</strong> Nhấp đúp <code class="url-box">05_XEM_LOI.bat</code> để xem tình trạng hoạt động và xuất file gửi cho hỗ trợ kỹ thuật.</li>
+        <li><strong>Dừng hệ thống:</strong> Nhấp đúp <code class="url-box">03_STOP_CHUA.bat</code>. Dữ liệu của bạn luôn được bảo toàn 100%.</li>
+      </ul>
+    </div>
+
+  </div>
+
+</body>
+</html>

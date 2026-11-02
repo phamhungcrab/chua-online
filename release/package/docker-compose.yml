@@ -1,0 +1,40 @@
+# ==============================================================================
+# TEMPLE LIVE STUDIO — WINDOWS DOCKER DISTRIBUTION DOCKER COMPOSE
+# Khách hàng: Nhấp đúp 02_START_CHUA.bat để khởi chạy tự động
+# ==============================================================================
+
+services:
+  temple-live-studio:
+    image: temple-live-studio:v1.0
+    container_name: temple-live-studio
+    restart: unless-stopped
+    ports:
+      # Ràng buộc nghiêm ngặt vào loopback 127.0.0.1 của Windows, KHÔNG public ra LAN/Internet
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - DOCKER_CONTAINER=true
+      - TEMPLE_DATA_DIR=/data
+    volumes:
+      # Named volume lưu trữ vĩnh viễn SQLite, file nhạc, ảnh nền và cấu hình
+      - temple_live_studio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+volumes:
+  temple_live_studio_data:
+    name: temple_live_studio_data

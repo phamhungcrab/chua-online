@@ -822,6 +822,40 @@ export class SqlitePersistenceStore {
     return info.changes > 0;
   }
 
+  public getKv<T>(key: string, defaultValue?: T): T | null {
+    const row = this.db
+      .prepare('SELECT value_json FROM kv_store WHERE key = ?')
+      .get(key) as { value_json: string } | undefined;
+    if (!row) return defaultValue !== undefined ? defaultValue : null;
+    try {
+      return JSON.parse(row.value_json) as T;
+    } catch {
+      return defaultValue !== undefined ? defaultValue : null;
+    }
+  }
+
+  public setKv(key: string, value: any): void {
+    this.db
+      .prepare(
+        'INSERT INTO kv_store (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at'
+      )
+      .run(key, JSON.stringify(value), Date.now());
+  }
+
+  public createConsistentSqliteBackup(targetFilePath: string): void {
+    const dir = path.dirname(targetFilePath);
+    fs.mkdirSync(dir, { recursive: true });
+    if (fs.existsSync(targetFilePath)) {
+      try {
+        fs.unlinkSync(targetFilePath);
+      } catch {
+        // ignore
+      }
+    }
+    const safePath = targetFilePath.replace(/'/g, "''");
+    this.db.exec(`VACUUM INTO '${safePath}'`);
+  }
+
   public close(): void {
     try {
       this.db.close();

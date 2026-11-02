@@ -1778,6 +1778,105 @@
     </div>
   </div>
 
+  <!-- Modal First-Run Setup Wizard -->
+  <div class="modal-backdrop" id="modalFirstRunWizard">
+    <div class="modal-dialog" style="max-width: 640px; border: 2px solid var(--accent); background: linear-gradient(180deg, #181410 0%, #120e0a 100%);">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; border-bottom:1px solid #3a3024; padding-bottom:10px;">
+        <span style="font-size:28px;">🪷</span>
+        <div>
+          <h3 style="margin:0; color:var(--accent); font-size:18px;">CHÀO MỪNG ĐẾN VỚI TEMPLE LIVE STUDIO</h3>
+          <p style="margin:2px 0 0; font-size:12px; color:var(--text-muted);">Hướng dẫn thiết lập ban đầu cho không gian Chánh Điện Trực Tuyến</p>
+        </div>
+      </div>
+
+      <!-- Step Indicator -->
+      <div style="display:flex; justify-content:space-between; margin-bottom:16px; background:#1e1812; padding:8px 12px; border-radius:6px; font-size:12px;">
+        <span id="wizardStepIndicator">Bước 1 / 4: Đặt Mật Khẩu Quản Trị</span>
+        <span style="color:var(--accent);" id="wizardProgressText">Khởi tạo</span>
+      </div>
+
+      <!-- Step 1: Admin Password -->
+      <div class="wizard-step" id="wizardStep1">
+        <p style="font-size:13px; line-height:1.5; color:var(--text); margin-bottom:12px;">
+          Để bảo vệ Bảng Điều Khiển không bị thao tác ngoài ý muốn trên máy tính hoặc mạng nội bộ, vui lòng đặt mật khẩu Admin riêng cho bạn:
+        </p>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:12px; margin-bottom:4px; font-weight:600;">Mật Khẩu Admin:</label>
+          <input type="password" id="inputWizardPassword" placeholder="Nhập ít nhất 4 ký tự (ví dụ: ChuanOnline2026)" class="styled-input" style="width:100%; box-sizing:border-box;" />
+        </div>
+        <p style="font-size:11px; color:var(--text-muted); margin:0;">
+          💡 Ghi chú: Mật khẩu này được mã hóa an toàn bằng PBKDF2/SHA-256 trong cơ sở dữ liệu SQLite của riêng bạn.
+        </p>
+      </div>
+
+      <!-- Step 2: TikTok Username -->
+      <div class="wizard-step" id="wizardStep2" style="display:none;">
+        <p style="font-size:13px; line-height:1.5; color:var(--text); margin-bottom:12px;">
+          Nhập username kênh TikTok bạn sẽ dùng để phát LIVE (không cần nhập ký tự @):
+        </p>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:12px; margin-bottom:4px; font-weight:600;">TikTok @Username:</label>
+          <input type="text" id="inputWizardTiktokUser" placeholder="ví dụ: dao_trang_tam_an" class="styled-input" style="width:100%; box-sizing:border-box;" />
+        </div>
+        <p style="font-size:11px; color:var(--text-muted); margin:0;">
+          💡 Khi bạn bắt đầu phát sóng trên TikTok LIVE Studio hoặc OBS, hệ thống sẽ tự động lắng nghe bình luận, tặng hoa, dâng đèn và gieo quẻ xăm.
+        </p>
+      </div>
+
+      <!-- Step 3: Vietnamese Voice & Audio -->
+      <div class="wizard-step" id="wizardStep3" style="display:none;">
+        <p style="font-size:13px; line-height:1.5; color:var(--text); margin-bottom:12px;">
+          Chọn giọng đọc AI tiếng Việt chuẩn truyền cảm cho lễ bái và giải nghĩa quẻ xăm:
+        </p>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:14px;">
+          <label style="display:flex; align-items:center; gap:8px; background:#221c14; padding:10px; border-radius:6px; cursor:pointer; border:1px solid #443625;">
+            <input type="radio" name="wizardVoiceRadio" value="vi-VN-HoaiMyNeural" checked />
+            <div>
+              <div style="font-weight:600; font-size:13px;">Hoài My (Nữ)</div>
+              <div style="font-size:11px; color:var(--text-muted);">Trầm ấm, trang nghiêm, thanh tịnh</div>
+            </div>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; background:#221c14; padding:10px; border-radius:6px; cursor:pointer; border:1px solid #443625;">
+            <input type="radio" name="wizardVoiceRadio" value="vi-VN-NamMinhNeural" />
+            <div>
+              <div style="font-weight:600; font-size:13px;">Nam Minh (Nam)</div>
+              <div style="font-size:11px; color:var(--text-muted);">Hào sảng, từ hòa, sâu lắng</div>
+            </div>
+          </label>
+        </div>
+        <button type="button" id="btnWizardTestVoice" class="btn btn-secondary" style="font-size:12px;">
+          🔊 Nghe Thử Giọng Đọc Mẫu
+        </button>
+      </div>
+
+      <!-- Step 4: OBS Overlay URL & Ready -->
+      <div class="wizard-step" id="wizardStep4" style="display:none;">
+        <p style="font-size:13px; line-height:1.5; color:var(--text); margin-bottom:12px;">
+          🎉 <strong>Chúc mừng! Hệ thống đã sẵn sàng phát sóng.</strong><br/>
+          Dưới đây là địa chỉ Nguồn Trình Duyệt (Browser Source) dành cho OBS Studio hoặc TikTok LIVE Studio:
+        </p>
+        <div style="background:#0a0806; border:1px solid var(--accent); padding:10px; border-radius:6px; margin-bottom:12px; font-family:monospace; font-size:13px; color:#f0c070; display:flex; justify-content:space-between; align-items:center;">
+          <span id="wizardOverlayUrlText">http://127.0.0.1:3000/overlay</span>
+          <button type="button" id="btnWizardCopyOverlay" class="btn btn-secondary" style="padding:4px 8px; font-size:11px;">📋 Sao chép</button>
+        </div>
+        <ul style="font-size:12px; color:var(--text-muted); margin:0 0 12px 18px; padding:0; line-height:1.6;">
+          <li>Kích thước tiêu chuẩn: <strong>1080 × 1920</strong> (Tỷ lệ 9:16 dọc TikTok).</li>
+          <li>Đánh dấu chọn: <strong>Control audio via OBS</strong> (Điều khiển âm thanh qua OBS).</li>
+          <li>Đánh dấu chọn: <strong>Shutdown source when not visible</strong>.</li>
+        </ul>
+      </div>
+
+      <!-- Wizard Actions -->
+      <div class="modal-actions" style="margin-top:16px; display:flex; justify-content:space-between; border-top:1px solid #3a3024; padding-top:12px;">
+        <button type="button" class="btn btn-secondary" id="btnWizardPrev" style="visibility:hidden;">⬅ Quay lại</button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-secondary" id="btnWizardSkip">Bỏ qua & Thiết lập sau</button>
+          <button type="button" class="btn btn-primary" id="btnWizardNext">Tiếp theo ➡</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toastBar">Đã lưu cấu hình</div>
 
   <script type="module" src="./admin/main.ts"></script>

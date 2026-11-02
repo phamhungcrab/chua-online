@@ -2764,9 +2764,159 @@ function initFortuneOracleControl(): void {
   });
 }
 
+function initFirstRunWizard(): void {
+  const modal = document.getElementById('modalFirstRunWizard');
+  if (!modal) return;
+
+  const step1 = document.getElementById('wizardStep1')!;
+  const step2 = document.getElementById('wizardStep2')!;
+  const step3 = document.getElementById('wizardStep3')!;
+  const step4 = document.getElementById('wizardStep4')!;
+  const stepIndicator = document.getElementById('wizardStepIndicator')!;
+  const progressText = document.getElementById('wizardProgressText')!;
+  const btnPrev = document.getElementById('btnWizardPrev') as HTMLButtonElement;
+  const btnNext = document.getElementById('btnWizardNext') as HTMLButtonElement;
+  const btnSkip = document.getElementById('btnWizardSkip') as HTMLButtonElement;
+  const btnTestVoice = document.getElementById('btnWizardTestVoice') as HTMLButtonElement;
+  const btnCopyOverlay = document.getElementById('btnWizardCopyOverlay') as HTMLButtonElement;
+  const overlayUrlText = document.getElementById('wizardOverlayUrlText')!;
+
+  const inputPassword = document.getElementById('inputWizardPassword') as HTMLInputElement;
+  const inputTiktok = document.getElementById('inputWizardTiktokUser') as HTMLInputElement;
+
+  if (overlayUrlText) {
+    overlayUrlText.textContent = `${window.location.origin}/overlay`;
+  }
+
+  let currentStep = 1;
+
+  function updateStepUi(): void {
+    step1.style.display = currentStep === 1 ? 'block' : 'none';
+    step2.style.display = currentStep === 2 ? 'block' : 'none';
+    step3.style.display = currentStep === 3 ? 'block' : 'none';
+    step4.style.display = currentStep === 4 ? 'block' : 'none';
+
+    btnPrev.style.visibility = currentStep > 1 ? 'visible' : 'hidden';
+
+    if (currentStep === 1) {
+      stepIndicator.textContent = 'Bước 1 / 4: Đặt Mật Khẩu Quản Trị';
+      progressText.textContent = 'Bảo mật';
+      btnNext.textContent = 'Tiếp theo ➡';
+    } else if (currentStep === 2) {
+      stepIndicator.textContent = 'Bước 2 / 4: Kênh TikTok LIVE';
+      progressText.textContent = 'Kết nối';
+      btnNext.textContent = 'Tiếp theo ➡';
+    } else if (currentStep === 3) {
+      stepIndicator.textContent = 'Bước 3 / 4: Giọng Đọc Tiếng Việt';
+      progressText.textContent = 'Âm thanh';
+      btnNext.textContent = 'Tiếp theo ➡';
+    } else if (currentStep === 4) {
+      stepIndicator.textContent = 'Bước 4 / 4: Nguồn OBS & Sẵn Sàng';
+      progressText.textContent = 'Hoàn tất';
+      btnNext.textContent = '🚀 Hoàn Tất Cài Đặt';
+    }
+  }
+
+  btnPrev?.addEventListener('click', () => {
+    if (currentStep > 1) {
+      currentStep--;
+      updateStepUi();
+    }
+  });
+
+  btnNext?.addEventListener('click', async () => {
+    if (currentStep === 1) {
+      const pwd = inputPassword?.value.trim() || '';
+      if (pwd.length > 0 && pwd.length < 4) {
+        showToast('Mật khẩu nên có ít nhất 4 ký tự hoặc để trống.');
+        return;
+      }
+      currentStep = 2;
+      updateStepUi();
+    } else if (currentStep === 2) {
+      currentStep = 3;
+      updateStepUi();
+    } else if (currentStep === 3) {
+      currentStep = 4;
+      updateStepUi();
+    } else if (currentStep === 4) {
+      const selectedVoiceEl = document.querySelector('input[name="wizardVoiceRadio"]:checked') as HTMLInputElement | null;
+      const selectedVoice = selectedVoiceEl?.value || 'vi-VN-HoaiMyNeural';
+      try {
+        await callAdminApi('/api/admin/setup/complete', {
+          password: inputPassword?.value.trim() || undefined,
+          tiktokUsername: inputTiktok?.value.trim() || undefined,
+          voice: selectedVoice
+        });
+        modal.classList.remove('active');
+        showToast('🎉 Thiết lập ban đầu thành công! Chúc buổi livestream an lạc.');
+      } catch (err: any) {
+        showToast(`Lỗi lưu thiết lập: ${err?.message}`);
+      }
+    }
+  });
+
+  btnSkip?.addEventListener('click', async () => {
+    try {
+      await callAdminApi('/api/admin/setup/complete', {});
+      modal.classList.remove('active');
+      showToast('Đã bỏ qua thiết lập ban đầu.');
+    } catch {
+      modal.classList.remove('active');
+    }
+  });
+
+  btnCopyOverlay?.addEventListener('click', () => {
+    const url = `${window.location.origin}/overlay`;
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('✓ Đã sao chép đường dẫn Overlay cho OBS!');
+    }).catch(() => {
+      showToast(url);
+    });
+  });
+
+  btnTestVoice?.addEventListener('click', async () => {
+    const selectedVoiceEl = document.querySelector('input[name="wizardVoiceRadio"]:checked') as HTMLInputElement | null;
+    const voice = selectedVoiceEl?.value || 'vi-VN-HoaiMyNeural';
+    btnTestVoice.disabled = true;
+    btnTestVoice.textContent = '⏳ Đang đọc...';
+    try {
+      const res = await callAdminApi('/api/admin/tts/preview', {
+        text: 'Nam mô A Di Đà Phật, kính chúc quý đạo hữu thân tâm thường an lạc, vạn sự cát tường.',
+        voice
+      });
+      if (res.audioUrl) {
+        const audio = new Audio(res.audioUrl);
+        await audio.play();
+        showToast('🔊 Đang phát giọng đọc mẫu tiếng Việt');
+      }
+    } catch (e: any) {
+      showToast(`Lỗi phát giọng: ${e.message}`);
+    } finally {
+      btnTestVoice.disabled = false;
+      btnTestVoice.textContent = '🔊 Nghe Thử Giọng Đọc Mẫu';
+    }
+  });
+
+  // Check setup status on load
+  void (async () => {
+    try {
+      const status = await callAdminApi('/api/admin/setup/status');
+      if (status && status.isFirstRun) {
+        currentStep = 1;
+        updateStepUi();
+        modal.classList.add('active');
+      }
+    } catch {
+      // ignore
+    }
+  })();
+}
+
 connectAdminWs();
 void loadAudioTracks();
 void loadPlaylists();
 initSceneStudio();
 initFortuneOracleControl();
 void loadFortuneDeck();
+initFirstRunWizard();

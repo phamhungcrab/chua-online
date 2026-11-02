@@ -9,3 +9,6 @@ _refs/
 .env
 .DS_Store
 Thumbs.db
+release/*.zip
+release/**/*.tar
+scratch/

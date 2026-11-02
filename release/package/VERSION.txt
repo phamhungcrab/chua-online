@@ -1,0 +1,12 @@
+======================================================================
+TEMPLE LIVE STUDIO — PHIÊN BẢN PHÂN PHỐI KHÁCH HÀNG
+======================================================================
+Phiên bản: 1.0.0
+Ngày phát hành: 2026-11-02
+Kiến trúc: linux/amd64 (Tương thích Docker Desktop WSL2 Windows 10/11 x64)
+Nền tảng chạy: Windows 10 (2004+) / Windows 11 64-bit + Docker Desktop
+Công nghệ: Node.js v24.22.2, TypeScript, SQLite WAL (Atomic VACUUM Snapshot),
+           PixiJS v8, Edge Neural Vietnamese TTS, WebSocket Real-time Router
+Tác quyền: Temple Live Studio Team
+Ghi chú bảo mật: Không chứa mật khẩu, cookie, khóa API cá nhân hay token bí mật.
+======================================================================
