@@ -14,6 +14,7 @@ import type {
   SceneLayerId,
   ScenePresetItem,
   ServerToClientWsMessage,
+  TempleSettings,
   TempleStateSnapshot
 } from '../../shared/types.ts';
 
@@ -104,14 +105,167 @@ const rulesTableBody = document.getElementById('rulesTableBody')!;
 let latestSnapshot: TempleStateSnapshot | null = null;
 let formInitialized = false;
 
-function renderSnapshot(snap: TempleStateSnapshot): void {
+function populateFormFromSettings(s: TempleSettings): void {
+  inpSceneTitle.value = s.title || '';
+  inpSceneSubtitle.value = s.subtitle || '';
+  selTimeOfDay.value = s.timeOfDay || 'day';
+  selWeather.value = s.weather || 'clear';
+  selSeatCap.value = s.seatCapacityMode || '48';
+  selQuality.value = s.qualityPreset || 'high';
+  selTargetFps.value = String(s.targetFps || 60);
+  rngSmoke.value = String(s.smokeDensity ?? 1.0);
+  rngPetal.value = String(s.petalDensity ?? 1.0);
+  lblSmoke.textContent = (s.smokeDensity ?? 1.0).toFixed(1);
+  lblPetal.textContent = (s.petalDensity ?? 1.0).toFixed(1);
+
+  chkFortune.checked = Boolean(s.fortuneEnabled);
+  chkFlowerOffering.checked = Boolean(s.flowerOfferingEnabled);
+  chkSafeZones.checked = Boolean(s.showSafeZones);
+  chkLunarFestival.checked = Boolean(s.lunarFestivalAuto);
+  chkIdleSerene.checked = Boolean(s.idleSereneChimes);
+  chkPrayers.checked = Boolean(s.collectivePrayersEnabled);
+
+  const faderMaster = document.getElementById('faderMaster') as HTMLInputElement | null;
+  const faderBgm = document.getElementById('faderBgm') as HTMLInputElement | null;
+  const faderBell = document.getElementById('faderBell') as HTMLInputElement | null;
+  const faderMo = document.getElementById('faderMo') as HTMLInputElement | null;
+  const faderCeremony = document.getElementById('faderCeremony') as HTMLInputElement | null;
+  const faderTts = document.getElementById('faderTts') as HTMLInputElement | null;
+
+  if (faderMaster) {
+    faderMaster.value = String(s.audioMasterVolume ?? 0.9);
+    const el = document.getElementById('valMixMaster');
+    if (el) el.textContent = `${Math.round((s.audioMasterVolume ?? 0.9) * 100)}%`;
+  }
+  if (faderBgm) {
+    faderBgm.value = String(s.audioMusicVolume ?? 0.55);
+    const el = document.getElementById('valMixBgm');
+    if (el) el.textContent = `${Math.round((s.audioMusicVolume ?? 0.55) * 100)}%`;
+  }
+  if (faderBell) {
+    faderBell.value = String(s.audioBellVolume ?? 0.9);
+    const el = document.getElementById('valMixBell');
+    if (el) el.textContent = `${Math.round((s.audioBellVolume ?? 0.9) * 100)}%`;
+  }
+  if (faderMo) {
+    faderMo.value = String(s.audioWoodenFishVolume ?? 0.85);
+    const el = document.getElementById('valMixMo');
+    if (el) el.textContent = `${Math.round((s.audioWoodenFishVolume ?? 0.85) * 100)}%`;
+  }
+  if (faderCeremony) {
+    faderCeremony.value = String(s.audioCeremonyVolume ?? 0.95);
+    const el = document.getElementById('valMixCeremony');
+    if (el) el.textContent = `${Math.round((s.audioCeremonyVolume ?? 0.95) * 100)}%`;
+  }
+  if (faderTts) {
+    faderTts.value = String(s.audioTtsVolume ?? 0.95);
+    const el = document.getElementById('valMixTts');
+    if (el) el.textContent = `${Math.round((s.audioTtsVolume ?? 0.95) * 100)}%`;
+  }
+
+  const selVoice = document.getElementById('selTtsVoice') as HTMLSelectElement | null;
+  if (selVoice) selVoice.value = s.ttsVoice || 'vi-VN-HoaiMyNeural';
+
+  const rngRate = document.getElementById('rngTtsRate') as HTMLInputElement | null;
+  if (rngRate) {
+    rngRate.value = String(s.ttsRatePercent ?? -12);
+    const el = document.getElementById('lblTtsRate');
+    if (el) el.textContent = `${s.ttsRatePercent ?? -12}% (Trang nghiêm)`;
+  }
+
+  const rngPitch = document.getElementById('rngTtsPitch') as HTMLInputElement | null;
+  if (rngPitch) {
+    rngPitch.value = String(s.ttsPitchHz ?? -6);
+    const el = document.getElementById('lblTtsPitch');
+    if (el) el.textContent = `${s.ttsPitchHz ?? -6}Hz (Ấm trầm)`;
+  }
+
+  const inpDiamonds = document.getElementById('inpTtsMinDiamonds') as HTMLInputElement | null;
+  if (inpDiamonds) inpDiamonds.value = String(s.ttsMinGiftDiamonds ?? 1);
+
+  const chkFreeComments = document.getElementById('chkReadFreeComments') as HTMLInputElement | null;
+  if (chkFreeComments) chkFreeComments.checked = Boolean(s.ttsReadFreeComments);
+
+  const chkReadPrayers = document.getElementById('chkReadPrayers') as HTMLInputElement | null;
+  if (chkReadPrayers) chkReadPrayers.checked = Boolean(s.ttsReadPrayers);
+
+  const chkReadFortunes = document.getElementById('chkReadFortunes') as HTMLInputElement | null;
+  if (chkReadFortunes) chkReadFortunes.checked = Boolean(s.ttsReadFortunes);
+
+  const chkFortuneOracleEnabled = document.getElementById('chkFortuneOracleEnabled') as HTMLInputElement | null;
+  if (chkFortuneOracleEnabled) chkFortuneOracleEnabled.checked = Boolean(s.fortuneEnabled);
+
+  const chkReadFortunesSync = document.getElementById('chkReadFortunesSync') as HTMLInputElement | null;
+  if (chkReadFortunesSync) chkReadFortunesSync.checked = Boolean(s.ttsReadFortunes);
+
+  const selFortuneReadMode = document.getElementById('selFortuneReadMode') as HTMLSelectElement | null;
+  if (selFortuneReadMode && s.fortuneReadMode) selFortuneReadMode.value = s.fortuneReadMode;
+
+  const txtFortuneCooldownSec = document.getElementById('txtFortuneCooldownSec') as HTMLInputElement | null;
+  if (txtFortuneCooldownSec) txtFortuneCooldownSec.value = String(s.fortuneUserCooldownSec ?? 15);
+
+  const selFortuneVoice = document.getElementById('selFortuneVoice') as HTMLSelectElement | null;
+  if (selFortuneVoice) selFortuneVoice.value = s.fortuneVoice || 'default';
+
+  const rngFortuneRate = document.getElementById('rngFortuneRate') as HTMLInputElement | null;
+  if (rngFortuneRate) {
+    rngFortuneRate.value = String(s.fortuneRatePercent ?? -10);
+    const lbl = document.getElementById('lblFortuneRate');
+    if (lbl) lbl.textContent = `${s.fortuneRatePercent ?? -10}%`;
+  }
+
+  const rngFortuneVolume = document.getElementById('rngFortuneVolume') as HTMLInputElement | null;
+  if (rngFortuneVolume) {
+    rngFortuneVolume.value = String(s.fortuneVolume ?? 0.95);
+    const lbl = document.getElementById('lblFortuneVolume');
+    if (lbl) lbl.textContent = `${Math.round((s.fortuneVolume ?? 0.95) * 100)}%`;
+  }
+
+  const chkModStrict = document.getElementById('chkModerationStrict') as HTMLInputElement | null;
+  if (chkModStrict) chkModStrict.checked = Boolean(s.moderationEnabled);
+
+  const chkDucking = document.getElementById('chkAudioDucking') as HTMLInputElement | null;
+  if (chkDucking) chkDucking.checked = Boolean(s.audioDuckingEnabled ?? true);
+
+  const rngDucking = document.getElementById('rngDuckingPercent') as HTMLInputElement | null;
+  if (rngDucking) {
+    rngDucking.value = String(s.audioDuckingPercent ?? 70);
+    const el = document.getElementById('lblDuckingPercent');
+    if (el) el.textContent = `${s.audioDuckingPercent ?? 70}%`;
+  }
+
+  const chkChant = document.getElementById('chkAutoChant') as HTMLInputElement | null;
+  if (chkChant) chkChant.checked = Boolean(s.autoChantEnabled);
+
+  const inpChantInterval = document.getElementById('inpAutoChantInterval') as HTMLInputElement | null;
+  if (inpChantInterval) inpChantInterval.value = String(s.autoChantIntervalMin ?? 4);
+
+  const chkMoRhythm = document.getElementById('chkWoodenFishRhythm') as HTMLInputElement | null;
+  if (chkMoRhythm) chkMoRhythm.checked = Boolean(s.woodenFishRhythmEnabled);
+
+  const inpBpm = document.getElementById('inpMoBpm') as HTMLInputElement | null;
+  if (inpBpm) {
+    inpBpm.value = String(s.woodenFishBpm ?? 52);
+    const el = document.getElementById('lblMoBpm');
+    if (el) el.textContent = `${s.woodenFishBpm ?? 52} BPM`;
+  }
+
+  const btnMasterTts = document.getElementById('btnToggleMasterTts');
+  if (btnMasterTts) {
+    btnMasterTts.textContent = s.ttsEnabled ? '🎙️ Giọng Đọc: ĐANG BẬT' : '🔇 ĐÃ TẮT GIỌNG ĐỌC';
+    btnMasterTts.className = s.ttsEnabled ? 'gold' : '';
+  }
+}
+
+function renderSnapshot(snap: TempleStateSnapshot, forceFormUpdate = false): void {
   latestSnapshot = snap;
 
-  if (snap.sceneConfig && !sceneEditorInitialized) {
+  if (snap.sceneConfig && (!sceneEditorInitialized || forceFormUpdate)) {
     activeSceneConfig = JSON.parse(JSON.stringify(snap.sceneConfig));
     sceneEditorInitialized = true;
     updateSceneEditorUI();
     renderSceneEditorCanvas();
+    renderLayerStackTable();
   }
 
   badgeTikTokEl.textContent = `TikTok: ${snap.connector.state.toUpperCase()}${snap.connector.uniqueId ? ' (@' + snap.connector.uniqueId + ')' : ''}`;
@@ -159,166 +313,17 @@ function renderSnapshot(snap: TempleStateSnapshot): void {
     }
   }
 
-  if (!formInitialized) {
+  if (!formInitialized || forceFormUpdate) {
     formInitialized = true;
-    inpSceneTitle.value = snap.settings.title;
-    inpSceneSubtitle.value = snap.settings.subtitle;
-    selTimeOfDay.value = snap.settings.timeOfDay;
-    selWeather.value = snap.settings.weather;
-    selSeatCap.value = snap.settings.seatCapacityMode;
-    selQuality.value = snap.settings.qualityPreset;
-    selTargetFps.value = String(snap.settings.targetFps);
-    rngSmoke.value = String(snap.settings.smokeDensity);
-    rngPetal.value = String(snap.settings.petalDensity);
-    lblSmoke.textContent = snap.settings.smokeDensity.toFixed(1);
-    lblPetal.textContent = snap.settings.petalDensity.toFixed(1);
+    populateFormFromSettings(snap.settings);
+  }
 
-    chkFortune.checked = Boolean(snap.settings.fortuneEnabled);
-    chkFlowerOffering.checked = Boolean(snap.settings.flowerOfferingEnabled);
-    chkSafeZones.checked = Boolean(snap.settings.showSafeZones);
-    chkLunarFestival.checked = Boolean(snap.settings.lunarFestivalAuto);
-    chkIdleSerene.checked = Boolean(snap.settings.idleSereneChimes);
-    chkPrayers.checked = Boolean(snap.settings.collectivePrayersEnabled);
-
-    const s = snap.settings;
-    const faderMaster = document.getElementById('faderMaster') as HTMLInputElement | null;
-    const faderBgm = document.getElementById('faderBgm') as HTMLInputElement | null;
-    const faderBell = document.getElementById('faderBell') as HTMLInputElement | null;
-    const faderMo = document.getElementById('faderMo') as HTMLInputElement | null;
-    const faderCeremony = document.getElementById('faderCeremony') as HTMLInputElement | null;
-    const faderTts = document.getElementById('faderTts') as HTMLInputElement | null;
-
-    if (faderMaster) {
-      faderMaster.value = String(s.audioMasterVolume);
-      const el = document.getElementById('valMixMaster');
-      if (el) el.textContent = `${Math.round(s.audioMasterVolume * 100)}%`;
-    }
-    if (faderBgm) {
-      faderBgm.value = String(s.audioMusicVolume);
-      const el = document.getElementById('valMixBgm');
-      if (el) el.textContent = `${Math.round(s.audioMusicVolume * 100)}%`;
-    }
-    if (faderBell) {
-      faderBell.value = String(s.audioBellVolume ?? 0.9);
-      const el = document.getElementById('valMixBell');
-      if (el) el.textContent = `${Math.round((s.audioBellVolume ?? 0.9) * 100)}%`;
-    }
-    if (faderMo) {
-      faderMo.value = String(s.audioWoodenFishVolume ?? 0.85);
-      const el = document.getElementById('valMixMo');
-      if (el) el.textContent = `${Math.round((s.audioWoodenFishVolume ?? 0.85) * 100)}%`;
-    }
-    if (faderCeremony) {
-      faderCeremony.value = String(s.audioCeremonyVolume ?? 0.95);
-      const el = document.getElementById('valMixCeremony');
-      if (el) el.textContent = `${Math.round((s.audioCeremonyVolume ?? 0.95) * 100)}%`;
-    }
-    if (faderTts) {
-      faderTts.value = String(s.audioTtsVolume);
-      const el = document.getElementById('valMixTts');
-      if (el) el.textContent = `${Math.round(s.audioTtsVolume * 100)}%`;
-    }
-
-    const selVoice = document.getElementById('selTtsVoice') as HTMLSelectElement | null;
-    if (selVoice) selVoice.value = s.ttsVoice;
-
-    const rngRate = document.getElementById('rngTtsRate') as HTMLInputElement | null;
-    if (rngRate) {
-      rngRate.value = String(s.ttsRatePercent ?? -12);
-      const el = document.getElementById('lblTtsRate');
-      if (el) el.textContent = `${s.ttsRatePercent}% (Trang nghiêm)`;
-    }
-
-    const rngPitch = document.getElementById('rngTtsPitch') as HTMLInputElement | null;
-    if (rngPitch) {
-      rngPitch.value = String(s.ttsPitchHz ?? -6);
-      const el = document.getElementById('lblTtsPitch');
-      if (el) el.textContent = `${s.ttsPitchHz}Hz (Ấm trầm)`;
-    }
-
-    const inpDiamonds = document.getElementById('inpTtsMinDiamonds') as HTMLInputElement | null;
-    if (inpDiamonds) inpDiamonds.value = String(s.ttsMinGiftDiamonds ?? 1);
-
-    const chkFreeComments = document.getElementById('chkReadFreeComments') as HTMLInputElement | null;
-    if (chkFreeComments) chkFreeComments.checked = Boolean(s.ttsReadFreeComments);
-
-    const chkReadPrayers = document.getElementById('chkReadPrayers') as HTMLInputElement | null;
-    if (chkReadPrayers) chkReadPrayers.checked = Boolean(s.ttsReadPrayers);
-
-    const chkReadFortunes = document.getElementById('chkReadFortunes') as HTMLInputElement | null;
-    if (chkReadFortunes) chkReadFortunes.checked = Boolean(s.ttsReadFortunes);
-
-    const chkFortuneOracleEnabled = document.getElementById('chkFortuneOracleEnabled') as HTMLInputElement | null;
-    if (chkFortuneOracleEnabled) chkFortuneOracleEnabled.checked = Boolean(s.fortuneEnabled);
-
-    const chkReadFortunesSync = document.getElementById('chkReadFortunesSync') as HTMLInputElement | null;
-    if (chkReadFortunesSync) chkReadFortunesSync.checked = Boolean(s.ttsReadFortunes);
-
-    const selFortuneReadMode = document.getElementById('selFortuneReadMode') as HTMLSelectElement | null;
-    if (selFortuneReadMode && s.fortuneReadMode) selFortuneReadMode.value = s.fortuneReadMode;
-
-    const txtFortuneCooldownSec = document.getElementById('txtFortuneCooldownSec') as HTMLInputElement | null;
-    if (txtFortuneCooldownSec) txtFortuneCooldownSec.value = String(s.fortuneUserCooldownSec ?? 15);
-
-    const selFortuneVoice = document.getElementById('selFortuneVoice') as HTMLSelectElement | null;
-    if (selFortuneVoice) selFortuneVoice.value = s.fortuneVoice || 'default';
-
-    const rngFortuneRate = document.getElementById('rngFortuneRate') as HTMLInputElement | null;
-    if (rngFortuneRate) {
-      rngFortuneRate.value = String(s.fortuneRatePercent ?? -10);
-      const lbl = document.getElementById('lblFortuneRate');
-      if (lbl) lbl.textContent = `${s.fortuneRatePercent ?? -10}%`;
-    }
-
-    const rngFortuneVolume = document.getElementById('rngFortuneVolume') as HTMLInputElement | null;
-    if (rngFortuneVolume) {
-      rngFortuneVolume.value = String(s.fortuneVolume ?? 0.95);
-      const lbl = document.getElementById('lblFortuneVolume');
-      if (lbl) lbl.textContent = `${Math.round((s.fortuneVolume ?? 0.95) * 100)}%`;
-    }
-
-    if (snap.recentFortuneExecutions) {
-      renderFortuneExecutions(snap.recentFortuneExecutions);
-    }
-    if (snap.fortuneDeckCount !== undefined) {
-      const lblCount = document.getElementById('lblFortuneDeckCount');
-      if (lblCount) lblCount.textContent = `(${snap.fortuneDeckCount} quẻ)`;
-    }
-
-    const chkModStrict = document.getElementById('chkModerationStrict') as HTMLInputElement | null;
-    if (chkModStrict) chkModStrict.checked = Boolean(s.moderationEnabled);
-
-    const chkDucking = document.getElementById('chkAudioDucking') as HTMLInputElement | null;
-    if (chkDucking) chkDucking.checked = Boolean(s.audioDuckingEnabled ?? true);
-
-    const rngDucking = document.getElementById('rngDuckingPercent') as HTMLInputElement | null;
-    if (rngDucking) {
-      rngDucking.value = String(s.audioDuckingPercent ?? 70);
-      const el = document.getElementById('lblDuckingPercent');
-      if (el) el.textContent = `${s.audioDuckingPercent ?? 70}%`;
-    }
-
-    const chkChant = document.getElementById('chkAutoChant') as HTMLInputElement | null;
-    if (chkChant) chkChant.checked = Boolean(s.autoChantEnabled);
-
-    const inpChantInterval = document.getElementById('inpAutoChantInterval') as HTMLInputElement | null;
-    if (inpChantInterval) inpChantInterval.value = String(s.autoChantIntervalMin ?? 4);
-
-    const chkMoRhythm = document.getElementById('chkWoodenFishRhythm') as HTMLInputElement | null;
-    if (chkMoRhythm) chkMoRhythm.checked = Boolean(s.woodenFishRhythmEnabled);
-
-    const inpBpm = document.getElementById('inpMoBpm') as HTMLInputElement | null;
-    if (inpBpm) {
-      inpBpm.value = String(s.woodenFishBpm ?? 52);
-      const el = document.getElementById('lblMoBpm');
-      if (el) el.textContent = `${s.woodenFishBpm ?? 52} BPM`;
-    }
-
-    const btnMasterTts = document.getElementById('btnToggleMasterTts');
-    if (btnMasterTts) {
-      btnMasterTts.textContent = s.ttsEnabled ? '🎙️ Giọng Đọc: ĐANG BẬT' : '🔇 ĐÃ TẮT GIỌNG ĐỌC';
-      btnMasterTts.className = s.ttsEnabled ? 'gold' : '';
-    }
+  if (snap.recentFortuneExecutions) {
+    renderFortuneExecutions(snap.recentFortuneExecutions);
+  }
+  if (snap.fortuneDeckCount !== undefined) {
+    const lblCount = document.getElementById('lblFortuneDeckCount');
+    if (lblCount) lblCount.textContent = `(${snap.fortuneDeckCount} quẻ)`;
   }
 
   if (snap.prayers && snap.prayers.length > 0) {
@@ -331,6 +336,8 @@ function renderSnapshot(snap: TempleStateSnapshot): void {
       row.innerHTML = `<span style="color:var(--gold-bright); font-weight:600;">[${p.category}]</span> <b style="color:var(--text);">${p.nickname}</b> <span style="color:var(--muted); font-size:11px;">(${timeStr})</span>: <span style="font-style:italic;">"${p.wishText}"</span>`;
       livePrayerRegistry.appendChild(row);
     }
+  } else {
+    livePrayerRegistry.innerHTML = '<div style="color:var(--muted); font-size:12px; padding:8px 0; text-align:center;">(Chưa có lời nguyện nào trong phiên này)</div>';
   }
 
   renderRulesTable(snap.rules);
@@ -1075,11 +1082,12 @@ if (btnSaveSchedulerSettings) {
   };
 }
 
-document.getElementById('btnResetSession')!.onclick = async () => {
-  const res = await callAdminApi('/api/admin/session/reset');
-  renderSnapshot(res.snapshot);
-  showToast('Đã sao lưu và đặt lại phiên LIVE');
-};
+const btnResetSession = document.getElementById('btnResetSession');
+if (btnResetSession) {
+  btnResetSession.onclick = () => {
+    openResetModal('session');
+  };
+}
 
 document.getElementById('btnExportConfig')!.onclick = () => {
   window.open('/api/config/export', '_blank');
@@ -1382,15 +1390,16 @@ if (btnRestartAudioEngine) {
 // ======================================================================
 // SAFE SYSTEM RESET & RECOVERY CENTER
 // ======================================================================
-let activeResetScope: 'session' | 'config' | 'factory' = 'session';
+let activeResetScope: 'session' | 'config' | 'factory' | 'scene' = 'session';
 const modalResetConfirmation = document.getElementById('modalResetConfirmation');
 const modalResetTitle = document.getElementById('modalResetTitle');
 const modalResetDesc = document.getElementById('modalResetDesc');
+const modalResetScopeBadge = document.getElementById('modalResetScopeBadge');
 const inpResetConfirmation = document.getElementById('inpResetConfirmation') as HTMLInputElement | null;
 const btnConfirmResetAction = document.getElementById('btnConfirmResetAction') as HTMLButtonElement | null;
 const btnCancelResetAction = document.getElementById('btnCancelResetAction') as HTMLButtonElement | null;
 
-function openResetModal(scope: 'session' | 'config' | 'factory'): void {
+function openResetModal(scope: 'session' | 'config' | 'factory' | 'scene'): void {
   if (!modalResetConfirmation || !modalResetTitle || !modalResetDesc || !inpResetConfirmation || !btnConfirmResetAction) return;
   activeResetScope = scope;
   inpResetConfirmation.value = '';
@@ -1400,14 +1409,22 @@ function openResetModal(scope: 'session' | 'config' | 'factory'): void {
     modalResetTitle.textContent = '🔄 Xác Nhận Đặt Lại Phiên Live (Session)';
     modalResetDesc.textContent =
       'Dừng ngay âm thanh đang phát, làm sạch hàng đợi TTS, xóa danh sách bồ đoàn tạm thời và bộ đếm tim/quà. Cấu hình và tệp âm thanh tải lên vẫn được bảo toàn an toàn.';
+    if (modalResetScopeBadge) modalResetScopeBadge.textContent = 'Phạm vi: PHIÊN LIVE (SESSION)';
   } else if (scope === 'config') {
     modalResetTitle.textContent = '⚙️ Xác Nhận Khôi Phục Cấu Hình Chuẩn (Config)';
     modalResetDesc.textContent =
-      'Đưa toàn bộ thiết lập Chánh Điện và 12 Luật Nghi Thức về mặc định. Bản sao lưu cấu hình cũ sẽ tự động được tạo tại data/backups/.';
+      'Đưa toàn bộ thiết lập Chánh Điện, bộ trộn âm thanh và 12 Luật Nghi Thức về mặc định gốc. Bản sao lưu cấu hình cũ sẽ tự động được tạo tại data/backups/.';
+    if (modalResetScopeBadge) modalResetScopeBadge.textContent = 'Phạm vi: CẤU HÌNH (CONFIG)';
+  } else if (scope === 'scene') {
+    modalResetTitle.textContent = '🪷 Xác Nhận Khôi Phục Cảnh & Tọa Độ Về Mặc Định (Scene)';
+    modalResetDesc.textContent =
+      'Đặt lại toàn bộ 8 Layer đồ họa và tọa độ pháp khí (Tượng Phật, Lư Hương, Mõ, Chuông, Điểm Lạy, Bồ Đoàn) về cấu hình Chánh Điện ban đầu. Tự động tạo bản sao lưu snapshot tại data/backups/.';
+    if (modalResetScopeBadge) modalResetScopeBadge.textContent = 'Phạm vi: CẢNH CHÙA (SCENE)';
   } else if (scope === 'factory') {
     modalResetTitle.textContent = '⚠️ Xác Nhận Khôi Phục Gốc Toàn Diện (Factory)';
     modalResetDesc.textContent =
-      'Tạo bản sao lưu toàn vẹn SQLite, sau đó khôi phục toàn bộ database về trạng thái sạch gốc của Chùa Online. Hãy chắc chắn trước khi tiếp tục.';
+      'Tạo bản sao lưu toàn vẹn SQLite, sau đó khôi phục toàn bộ database, cài đặt, cảnh Chùa và phiên phát về trạng thái sạch gốc của Chùa Online. Hãy chắc chắn trước khi tiếp tục.';
+    if (modalResetScopeBadge) modalResetScopeBadge.textContent = 'Phạm vi: CÀI ĐẶT GỐC (FACTORY)';
   }
 
   modalResetConfirmation.classList.add('active');
@@ -1420,7 +1437,14 @@ document.getElementById('btnTriggerResetFactory')?.addEventListener('click', () 
 
 if (inpResetConfirmation && btnConfirmResetAction) {
   inpResetConfirmation.addEventListener('input', () => {
-    btnConfirmResetAction.disabled = inpResetConfirmation.value !== 'RESET';
+    btnConfirmResetAction.disabled = inpResetConfirmation.value.trim().toUpperCase() !== 'RESET';
+  });
+
+  inpResetConfirmation.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && inpResetConfirmation.value.trim().toUpperCase() === 'RESET') {
+      e.preventDefault();
+      btnConfirmResetAction.click();
+    }
   });
 }
 
@@ -1431,26 +1455,54 @@ if (btnCancelResetAction && modalResetConfirmation && inpResetConfirmation) {
   });
 }
 
+if (modalResetConfirmation) {
+  modalResetConfirmation.addEventListener('click', (e) => {
+    if (e.target === modalResetConfirmation) {
+      modalResetConfirmation.classList.remove('active');
+      if (inpResetConfirmation) inpResetConfirmation.value = '';
+    }
+  });
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modalResetConfirmation?.classList.contains('active')) {
+    modalResetConfirmation.classList.remove('active');
+    if (inpResetConfirmation) inpResetConfirmation.value = '';
+  }
+});
+
 if (btnConfirmResetAction && inpResetConfirmation && modalResetConfirmation) {
   btnConfirmResetAction.addEventListener('click', async () => {
-    if (inpResetConfirmation.value !== 'RESET') return;
+    if (inpResetConfirmation.value.trim().toUpperCase() !== 'RESET') return;
     try {
       btnConfirmResetAction.disabled = true;
       btnConfirmResetAction.textContent = 'Đang thực hiện...';
       const res = await callAdminApi('/api/admin/system/reset', {
         scope: activeResetScope,
-        confirmToken: inpResetConfirmation.value
+        confirmToken: 'RESET'
       });
       showToast(res.message || 'Đã hoàn tất thao tác đặt lại');
       modalResetConfirmation.classList.remove('active');
       inpResetConfirmation.value = '';
-      if (res.snapshot) renderSnapshot(res.snapshot);
+
+      if (res.sceneConfig) {
+        pushSceneUndo();
+        activeSceneConfig = JSON.parse(JSON.stringify(res.sceneConfig));
+        updateSceneEditorUI();
+        renderSceneEditorCanvas();
+        renderLayerStackTable();
+      }
+
+      if (res.snapshot) {
+        renderSnapshot(res.snapshot, true);
+      }
       void loadAudioTracks();
+      void loadScenePresets();
     } catch (err: any) {
       showToast(`Lỗi đặt lại: ${err.message}`);
     } finally {
       btnConfirmResetAction.textContent = 'Xác Nhận Thực Hiện';
-      btnConfirmResetAction.disabled = inpResetConfirmation.value !== 'RESET';
+      btnConfirmResetAction.disabled = inpResetConfirmation.value.trim().toUpperCase() !== 'RESET';
     }
   });
 }
@@ -2698,19 +2750,8 @@ function initSceneStudio(): void {
     }
   });
 
-  document.getElementById('btnResetSceneDefault')?.addEventListener('click', async () => {
-    if (!confirm('Khôi phục toàn bộ cảnh và tọa độ pháp khí về mặc định ban đầu?')) return;
-    try {
-      pushSceneUndo();
-      const res = await callAdminApi('/api/admin/scene/reset');
-      activeSceneConfig = res.sceneConfig;
-      updateSceneEditorUI();
-      renderSceneEditorCanvas();
-      showToast('Đã khôi phục cảnh về mặc định');
-      if (res.snapshot) renderSnapshot(res.snapshot);
-    } catch (e: any) {
-      showToast(`Lỗi reset: ${e.message}`);
-    }
+  document.getElementById('btnResetSceneDefault')?.addEventListener('click', () => {
+    openResetModal('scene');
   });
 
   document.getElementById('btnUndoScene')?.addEventListener('click', () => {

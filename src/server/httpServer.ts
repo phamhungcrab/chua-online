@@ -1081,23 +1081,38 @@ async function handleAdminAction(
       }
 
       if (scope === 'session') {
+        const backupPath = ctx.store.createBackupSnapshot();
         ctx.engine.resetTransientState();
         ctx.broadcastWs({ type: 'stopAudio' });
         ctx.broadcastWs({ type: 'clearTtsQueue' });
         return {
           ok: true,
           scope,
+          backupPath,
           message: 'Đã đặt lại phiên hiện tại: dọn sạch hàng đợi TTS, reset trạng thái tạm và bộ đếm.',
           snapshot: ctx.getFullSnapshot()
         };
+      } else if (scope === 'scene') {
+        const backupPath = ctx.store.createBackupSnapshot();
+        const updated = ctx.engine.updateSceneConfig(DEFAULT_SCENE_CONFIG);
+        ctx.broadcastWs({ type: 'sceneConfigUpdate', sceneConfig: updated });
+        return {
+          ok: true,
+          scope,
+          backupPath,
+          sceneConfig: updated,
+          message: 'Đã khôi phục toàn bộ cảnh và tọa độ pháp khí về mặc định (đã tự động sao lưu).',
+          snapshot: ctx.getFullSnapshot()
+        };
       } else if (scope === 'config') {
-        ctx.store.createBackupSnapshot();
+        const backupPath = ctx.store.createBackupSnapshot();
         ctx.engine.updateSettings(DEFAULT_SETTINGS);
         ctx.store.saveRules([...DEFAULT_EVENT_RULES]);
         ctx.engine.importConfigBundle({ settings: DEFAULT_SETTINGS, rules: [...DEFAULT_EVENT_RULES] });
         return {
           ok: true,
           scope,
+          backupPath,
           message: 'Đã khôi phục cài đặt Chánh Điện và các quy tắc sự kiện về mặc định (đã tự động sao lưu).',
           snapshot: ctx.getFullSnapshot()
         };
@@ -1105,11 +1120,16 @@ async function handleAdminAction(
         const backupPath = ctx.store.createBackupSnapshot();
         ctx.engine.updateSettings(DEFAULT_SETTINGS);
         ctx.store.saveRules([...DEFAULT_EVENT_RULES]);
+        const updatedScene = ctx.engine.updateSceneConfig(DEFAULT_SCENE_CONFIG);
+        ctx.broadcastWs({ type: 'sceneConfigUpdate', sceneConfig: updatedScene });
         ctx.engine.resetSession();
+        ctx.broadcastWs({ type: 'stopAudio' });
+        ctx.broadcastWs({ type: 'clearTtsQueue' });
         return {
           ok: true,
           scope,
           backupPath,
+          sceneConfig: updatedScene,
           message: 'Đã khôi phục cài đặt gốc và tạo checkpoint sao lưu dữ liệu an toàn.',
           snapshot: ctx.getFullSnapshot()
         };

@@ -1968,10 +1968,16 @@
   <!-- Modal Reset Confirmation -->
   <div class="modal-backdrop" id="modalResetConfirmation">
     <div class="modal-dialog">
-      <h3 id="modalResetTitle">⚠️ Xác Nhận Đặt Lại Hệ Thống</h3>
-      <p id="modalResetDesc" style="font-size:13px; line-height:1.5; color:var(--text); margin:0;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 id="modalResetTitle" style="margin:0;">⚠️ Xác Nhận Đặt Lại Hệ Thống</h3>
+        <span id="modalResetScopeBadge" style="font-size:11px; font-weight:700; padding:3px 8px; border-radius:4px; background:rgba(229,184,91,0.15); border:1px solid var(--gold); color:var(--gold-bright);">Phạm vi: Session</span>
+      </div>
+      <p id="modalResetDesc" style="font-size:13px; line-height:1.5; color:var(--text); margin:0 0 10px 0;">
         Thao tác này sẽ đặt lại trạng thái hệ thống. Hãy cân nhắc cẩn thận nếu đang phát sóng trực tiếp.
       </p>
+      <div style="font-size:11px; color:var(--jade); margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+        <span>🛡️ Hệ thống tự động tạo bản sao lưu an toàn tại <code>data/backups/</code> trước khi thực hiện.</span>
+      </div>
       <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(229,184,91,0.25); border-radius:8px; padding:12px;">
         <label for="inpResetConfirmation" style="font-size:12px; color:var(--muted); display:block; margin-bottom:6px;">
           Để xác nhận, vui lòng nhập chính xác chữ: <strong style="color:var(--gold-bright); font-size:13px;">RESET</strong> (viết hoa):
