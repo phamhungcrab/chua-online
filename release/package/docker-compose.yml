@@ -5,7 +5,7 @@
 
 services:
   temple-live-studio:
-    image: temple-live-studio:v1.0.1
+    image: temple-live-studio:v1.0.2
     container_name: temple-live-studio
     restart: unless-stopped
     ports:

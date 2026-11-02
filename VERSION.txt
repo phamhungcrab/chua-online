@@ -1,0 +1,32 @@
+======================================================================
+TEMPLE LIVE STUDIO — PHIÊN BẢN PHÂN PHỐI KHÁCH HÀNG
+======================================================================
+Phiên bản: 1.0.2
+Ngày phát hành: 2026-11-02
+Kiến trúc: linux/amd64 (Tương thích Docker Desktop WSL2 Windows 10/11 x64)
+Nền tảng chạy: Windows 10 (2004+) / Windows 11 64-bit + Docker Desktop
+Công nghệ: Node.js v24.22.2, TypeScript, SQLite WAL (Atomic VACUUM Snapshot),
+           PixiJS v8, Edge Neural Vietnamese TTS, WebSocket Real-time Router
+Tác quyền: Temple Live Studio Team
+Ghi chú bảo mật: Không chứa mật khẩu, cookie, khóa API cá nhân hay token bí mật.
+
+Nhật ký thay đổi v1.0.2:
+- SỬA TRIỆT ĐỂ BUG RESET SESSION:
+  * Khi bấm Reset Session ("RESET"): dừng ngay âm thanh TTS đang phát, lập tức unblock loop drainTtsQueue (không còn bị treo 20s), dọn sạch hàng đợi TTS cũ.
+  * Tự động khôi phục và tiếp tục phát nhạc thiền nền ngũ cung (BGM Ambient Loop) với âm lượng bình thường (hủy ducking).
+  * Đảm bảo Audio Engine không bị khóa hoặc rơi vào trạng thái muted vĩnh viễn; phục hồi AudioContext nếu trình duyệt tạm đình chỉ.
+  * Phân định rõ ràng 3 trạng thái: Reset Session (làm mới phiên, nhạc nền tiếp tục) vs Stop Audio (dừng bài) vs Emergency Mute (im lặng khẩn cấp).
+  * Bình luận, xin xăm, follow, tặng quà kế tiếp lập tức được phát âm thanh mượt mà, không sinh duplicate timers hay duplicate players.
+
+- SỬA TRIỆT ĐỂ BUG THƯ VIỆN ÂM THANH (AUDIO LIBRARY):
+  * Thanh lọc danh mục (Tất cả, Nhạc Thiền, Tụng Kinh, Niệm Phật, Chuông, Mõ, Cầu Nguyện, Lời Chào, Lễ Hội, Hiệu Ứng) hoạt động mượt mà, hiển thị rõ ràng trạng thái nút active.
+  * Tự động lưu và khôi phục bộ lọc danh mục đã chọn (localStorage) khi tải lại trang Admin.
+  * Hiển thị thông báo hướng dẫn trực quan khi danh mục được chọn chưa có tệp âm thanh.
+  * Bổ sung tính năng thay đổi danh mục trực tiếp cho từng tệp âm thanh ngay trên thẻ bài hát; cập nhật tức thì qua API mà không làm gián đoạn nhạc đang phát.
+  * Định dạng thông minh kích thước tệp (B, KB, MB); tự động đồng bộ dung lượng tệp từ ổ đĩa nếu cơ sở dữ liệu ghi nhận 0 byte.
+  * Hiển thị thời lượng tệp audio chính xác khi tải metadata; cảnh báo rõ ràng đối với tệp mẫu dung lượng quá nhỏ (<1KB) mà không tự ý xóa dữ liệu của người dùng.
+
+- CI & ĐÓNG GÓI PHÁT HÀNH:
+  * Cung cấp GitHub Actions CI Workflow (.github/workflows/docker-build.yml) để tự động kiểm thử và build Docker Image độc lập trên đám mây, bảo vệ máy livestream của người dùng không bị giật lag.
+  * Bảo toàn nguyên vẹn 2 bản phát hành trước (v1.0.0 và v1.0.1) trong thư mục release/ để sẵn sàng rollback khi cần.
+======================================================================

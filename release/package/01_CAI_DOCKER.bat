@@ -3,6 +3,8 @@ chcp 65001 >nul
 title Cài Đặt Docker Desktop — Temple Live Studio
 cls
 
+cd /d "%~dp0"
+
 echo ======================================================================
 echo 🪷 TEMPLE LIVE STUDIO — KIỂM TRA & CÀI ĐẶT DOCKER DESKTOP
 echo ======================================================================

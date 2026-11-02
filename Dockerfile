@@ -25,7 +25,7 @@ FROM node:24-alpine AS runner
 
 LABEL maintainer="Temple Live Studio Team"
 LABEL description="Temple Live Studio — Chánh Điện Việt Nam 2.5D Livestream Server"
-LABEL version="1.0.1"
+LABEL version="1.0.2"
 
 # Install curl for container healthcheck and sqlite CLI for consistent inspection
 RUN apk add --no-cache curl sqlite
